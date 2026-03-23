@@ -1,0 +1,43 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { v4 as uuid } from 'uuid'
+import { getUser, unauthorized } from '@/lib/auth'
+import { getCarpeta, CarpetasDB } from '@/lib/carpeta-db'
+
+export async function GET(req: NextRequest) {
+  const u = getUser(req); if (!u) return unauthorized()
+  return NextResponse.json(getCarpeta(u.username))
+}
+
+export async function POST(req: NextRequest) {
+  const u = getUser(req); if (!u) return unauthorized()
+  const carpeta = getCarpeta(u.username)
+  const body = await req.json().catch(()=>({}))
+  const now  = new Date().toISOString()
+
+  if (body.tipo === 'anotacion') {
+    const { titulo, contenido, privada } = body
+    if (!titulo?.trim() || !contenido?.trim()) return NextResponse.json({ error:'titulo y contenido requeridos' }, { status:400 })
+    carpeta.anotaciones.push({ id:uuid().slice(0,8), titulo:titulo.trim(), contenido:contenido.trim(), fecha:now, privada:privada||false })
+    return NextResponse.json({ mensaje:'✅ Anotación guardada' }, { status:201 })
+  }
+
+  if (body.tipo === 'documento') {
+    const { nombre, descripcion } = body
+    if (!nombre?.trim()) return NextResponse.json({ error:'nombre requerido' }, { status:400 })
+    carpeta.documentos.push({ id:uuid().slice(0,8), nombre:nombre.trim(), descripcion:descripcion||'', fecha:now })
+    return NextResponse.json({ mensaje:'✅ Documento registrado' }, { status:201 })
+  }
+
+  return NextResponse.json({ error:'tipo inválido' }, { status:400 })
+}
+
+export async function DELETE(req: NextRequest) {
+  const u = getUser(req); if (!u) return unauthorized()
+  const { tipo, id } = await req.json().catch(()=>({}))
+  const carpeta = getCarpeta(u.username)
+
+  if (tipo === 'anotacion') carpeta.anotaciones = carpeta.anotaciones.filter(a => a.id !== id)
+  if (tipo === 'documento')  carpeta.documentos  = carpeta.documentos.filter(d => d.id !== id)
+
+  return NextResponse.json({ mensaje:'✅ Eliminado' })
+}
