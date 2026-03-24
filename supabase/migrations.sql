@@ -315,8 +315,11 @@ INSERT INTO forms_config (id) VALUES ('global') ON CONFLICT (id) DO NOTHING;
 CREATE TABLE IF NOT EXISTS carpetas (
   username    TEXT PRIMARY KEY,
   anotaciones JSONB NOT NULL DEFAULT '[]'::jsonb,
-  documentos  JSONB NOT NULL DEFAULT '[]'::jsonb
+  documentos  JSONB NOT NULL DEFAULT '[]'::jsonb,
+  hilos       JSONB NOT NULL DEFAULT '[]'::jsonb
 );
+
+ALTER TABLE carpetas ADD COLUMN IF NOT EXISTS hilos JSONB NOT NULL DEFAULT '[]'::jsonb;
 
 -- ── RLS Policies (disable for service role, enable if using anon) ─
 -- If using SUPABASE_SERVICE_ROLE_KEY, RLS is bypassed automatically.

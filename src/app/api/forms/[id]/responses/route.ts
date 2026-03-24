@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getUser, unauthorized, forbidden, err } from '@/lib/auth'
-import { getFormsDB } from '@/lib/forms-db'
+import { getFormsDB, persistFormSubmission } from '@/lib/forms-db'
 import { logExtra } from '@/lib/webhook'
 
 type P = { params: Promise<{ id: string }> }
@@ -65,6 +65,7 @@ export async function PATCH(req: NextRequest, { params }: P) {
 
   const next = { ...current, answers: nextAnswers }
   db.submissions.set(submissionId, next)
+  await persistFormSubmission(next)
   logExtra('🧰 Respuesta editada', `${u.username} editó respuesta ${submissionId} del formulario ${id}`)
   return NextResponse.json({ mensaje: '✅ Respuesta actualizada', submission: next })
 }
@@ -86,7 +87,9 @@ export async function DELETE(req: NextRequest, { params }: P) {
   const current = db.submissions.get(submissionId)
   if (!current || current.formId !== id) return err('Respuesta no encontrada', 404)
 
-  db.submissions.set(submissionId, { ...current, state: 'removed' })
+  const next = { ...current, state: 'removed' as const }
+  db.submissions.set(submissionId, next)
+  await persistFormSubmission(next)
   logExtra('🧹 Respuesta eliminada', `${u.username} retiró respuesta ${submissionId} del formulario ${id}`)
   return NextResponse.json({ mensaje: '✅ Respuesta eliminada' })
 }

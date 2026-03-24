@@ -1,5 +1,6 @@
-export interface Anotacion { id:string; titulo:string; contenido:string; fecha:string; privada:boolean }
 import { SupabaseMap } from './supabase-map'
+import { createClient } from '@supabase/supabase-js'
+import { getSecret } from './secrets'
 
 export interface Anotacion {
   id: string
@@ -16,10 +17,31 @@ export interface CarpetaDocumento {
   fecha: string
 }
 
+export interface MensajeHiloCarpeta {
+  id: string
+  autor: string
+  nombre: string
+  contenido: string
+  fecha: string
+  sistema?: boolean
+}
+
+export interface HiloCarpeta {
+  id: string
+  titulo: string
+  descripcion: string
+  estado: 'abierto' | 'cerrado'
+  creadoPor: string
+  creadoEn: string
+  participantes: string[]
+  mensajes: MensajeHiloCarpeta[]
+}
+
 export interface CarpetaPersonal {
   username: string
   anotaciones: Anotacion[]
   documentos: CarpetaDocumento[]
+  hilos: HiloCarpeta[]
 }
 
 declare global {
@@ -30,6 +52,21 @@ declare global {
 }
 
 const isSupabaseEnabled = !!(process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL)
+
+let _carpetaClient: ReturnType<typeof createClient> | null = null
+
+function getCarpetaClient() {
+  if (_carpetaClient) return _carpetaClient
+  const url = getSecret('SUPABASE_URL') || process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || ''
+  const key =
+    getSecret('SUPABASE_SERVICE_ROLE_KEY') ||
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    ''
+  if (!url || !key) return null
+  _carpetaClient = createClient(url, key)
+  return _carpetaClient
+}
 
 async function initCarpetas() {
   if (isSupabaseEnabled) {
@@ -52,6 +89,20 @@ export async function getCarpetasDB() {
 
 export async function getCarpeta(username: string): Promise<CarpetaPersonal> {
   const db = await getCarpetasDB()
-  if (!db.has(username)) db.set(username, { username, anotaciones: [], documentos: [] })
+  if (!db.has(username)) db.set(username, { username, anotaciones: [], documentos: [], hilos: [] })
   return db.get(username) as CarpetaPersonal
+}
+
+export function canAccessCarpetaHilo(hilo: HiloCarpeta, viewerUsername: string, ownerUsername: string) {
+  return viewerUsername === ownerUsername || hilo.participantes.includes(viewerUsername)
+}
+
+export async function persistCarpeta(carpeta: CarpetaPersonal) {
+  const db = await getCarpetasDB()
+  db.set(carpeta.username, carpeta)
+  if (!isSupabaseEnabled) return
+  const client = getCarpetaClient()
+  if (!client) return
+  const { error } = await (client.from('carpetas') as any).upsert(carpeta as any)
+  if (error) throw new Error(`[carpeta] No se pudo persistir carpeta: ${error.message}`)
 }

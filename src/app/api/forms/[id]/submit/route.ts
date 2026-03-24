@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getUser, unauthorized, err } from '@/lib/auth'
-import { buildSubmissionId, defaultConfig, getFormsDB } from '@/lib/forms-db'
+import { buildSubmissionId, defaultConfig, getFormsDB, persistFormSubmission } from '@/lib/forms-db'
 import { getRequestIp, rateLimit } from '@/lib/security'
 import { logWebhook } from '@/lib/webhook'
 
@@ -104,6 +104,7 @@ export async function POST(req: NextRequest, { params }: P) {
   }
 
   db.submissions.set(submission.id, submission)
+  await persistFormSubmission(submission)
   await logWebhook({
     type: 'extras',
     title: '🧾 Nueva respuesta de formulario',

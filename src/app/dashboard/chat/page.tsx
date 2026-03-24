@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { Send, Hash, MessageSquare, Plus, User, Lock, Star, Crown, Image as ImageIcon, ChevronDown, Music, VolumeX, Volume2 } from 'lucide-react'
-import { getCanales, getMensajes, enviarMensaje, crearDM } from '@/lib/client'
+import { getCanales, getMensajes, enviarMensaje, crearDM, crearChatPrivado } from '@/lib/client'
 
 function timeLabel(iso: string) {
   const d = new Date(iso), now = new Date()
@@ -31,6 +31,9 @@ export default function ChatPage() {
   const [sending, setSending] = useState(false)
   const [dmTarget, setDmTarget] = useState('')
   const [showDM, setShowDM] = useState(false)
+  const [privateRoomName, setPrivateRoomName] = useState('')
+  const [privateRoomUsers, setPrivateRoomUsers] = useState('')
+  const [privateRoomDescription, setPrivateRoomDescription] = useState('')
   const [isAtBottom, setIsAtBottom] = useState(true)
   const [newMsgCount, setNewMsgCount] = useState(0)
   const [musicUrl, setMusicUrl] = useState('')
@@ -160,6 +163,27 @@ export default function ChatPage() {
     } catch (e: any) { alert(e.message) }
   }
 
+  async function crearSalaPrivada() {
+    const nombre = privateRoomName.trim()
+    if (!nombre) return
+    const participantes = privateRoomUsers
+      .split(/[,\n]/)
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+
+    try {
+      const r = await crearChatPrivado(nombre, participantes, privateRoomDescription.trim())
+      await loadCanales()
+      setCanalActivo(r.id)
+      setPrivateRoomName('')
+      setPrivateRoomUsers('')
+      setPrivateRoomDescription('')
+      setShowDM(false)
+    } catch (e: any) {
+      alert(e.message)
+    }
+  }
+
   function activarMusica() {
     const url = musicInputVal.trim()
     if (!url || !audioRef.current) return
@@ -187,6 +211,7 @@ export default function ChatPage() {
   const unidades = canales.filter((c: any) => c.tipo === 'unidad')
   const privados = canales.filter((c: any) => ['supervisory', 'comando'].includes(c.tipo))
   const dms = canales.filter((c: any) => c.tipo === 'dm')
+  const privateRooms = canales.filter((c: any) => c.tipo === 'private')
 
   const grouped = mensajes.reduce((acc: any[], msg: any, i: number) => {
     const prev = mensajes[i - 1]
@@ -204,6 +229,7 @@ export default function ChatPage() {
   const isCS = user?.rol === 'command_staff'
   const canWrite = canalInfo && (
     canalInfo.tipo === 'dm' ||
+    canalInfo.tipo === 'private' ||
     (canalInfo.tipo === 'supervisory' && isSuperv) ||
     (canalInfo.tipo === 'comando' && isCS) ||
     ['general', 'unidad'].includes(canalInfo.tipo)
@@ -214,10 +240,11 @@ export default function ChatPage() {
     const other = c.tipo === 'dm' ? (c.participantes?.find((p: string) => p !== user?.username) || c.id) : null
     const label = c.tipo === 'dm' ? other : (c.icono ? `${c.icono} ${c.nombre}` : c.nombre)
     const unread = c.unread || 0
+    const isPrivate = c.tipo === 'private'
     return (
       <button onClick={() => setCanalActivo(c.id)}
         className={`w-full flex items-center gap-2 px-3 py-1.5 transition-all text-left ${isActive ? 'bg-accent-blue/10 text-accent-blue' : 'text-tx-muted hover:text-tx-secondary hover:bg-bg-hover'}`}>
-        {c.tipo === 'dm' ? <User size={10} className="shrink-0" /> : <Hash size={10} className="shrink-0" />}
+        {c.tipo === 'dm' ? <User size={10} className="shrink-0" /> : isPrivate ? <Lock size={10} className="shrink-0" /> : <Hash size={10} className="shrink-0" />}
         <span className="font-mono text-[10px] truncate flex-1">{label}</span>
         {unread > 0 && <span className="bg-red-500 text-white font-mono text-[8px] rounded-full px-1 min-w-[14px] text-center">{unread}</span>}
         {c.tipo === 'supervisory' && <Star size={9} className="shrink-0 text-accent-gold/60" />}
@@ -282,7 +309,7 @@ export default function ChatPage() {
           <div className="mt-1">
             <div className="flex items-center justify-between px-3 py-1">
               <p className="font-mono text-[7px] tracking-widest uppercase text-tx-dim flex items-center gap-1">
-                DMs
+                Privados
                 {(canalesData.totalDMUnread > 0 || canalesData.totalUnread > 0) && (
                   <span className="bg-red-500 text-white font-mono text-[7px] rounded-full px-1">
                     {canalesData.totalDMUnread || canalesData.totalUnread}
@@ -292,13 +319,37 @@ export default function ChatPage() {
               <button onClick={() => setShowDM(p => !p)} className="text-tx-dim hover:text-tx-muted"><Plus size={10} /></button>
             </div>
             {showDM && (
-              <div className="px-3 pb-2 flex gap-1">
-                <input className="input text-[10px] py-1 flex-1" placeholder="Usuario"
-                  value={dmTarget} onChange={e => setDmTarget(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && abrirDM()} />
-                <button onClick={abrirDM} className="text-accent-blue text-[10px] px-1.5 border border-accent-blue/40 hover:bg-accent-blue/10">→</button>
+              <div className="px-3 pb-2 flex flex-col gap-2">
+                <div className="flex gap-1">
+                  <input className="input text-[10px] py-1 flex-1" placeholder="DM por username"
+                    value={dmTarget} onChange={e => setDmTarget(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && abrirDM()} />
+                  <button onClick={abrirDM} className="text-accent-blue text-[10px] px-1.5 border border-accent-blue/40 hover:bg-accent-blue/10">→</button>
+                </div>
+                <div className="border border-bg-border bg-bg-surface p-2 flex flex-col gap-1.5">
+                  <input
+                    className="input text-[10px] py-1"
+                    placeholder="Nombre del canal privado"
+                    value={privateRoomName}
+                    onChange={e => setPrivateRoomName(e.target.value)}
+                  />
+                  <input
+                    className="input text-[10px] py-1"
+                    placeholder="Participantes por username, separados por coma"
+                    value={privateRoomUsers}
+                    onChange={e => setPrivateRoomUsers(e.target.value)}
+                  />
+                  <input
+                    className="input text-[10px] py-1"
+                    placeholder="Descripción opcional"
+                    value={privateRoomDescription}
+                    onChange={e => setPrivateRoomDescription(e.target.value)}
+                  />
+                  <button onClick={crearSalaPrivada} className="btn-primary py-1 text-[9px] justify-center">Crear canal privado</button>
+                </div>
               </div>
             )}
+            {privateRooms.map((c: any) => <CanalBtn key={c.id} c={c} />)}
             {dms.map((c: any) => <CanalBtn key={c.id} c={c} />)}
           </div>
         </div>
@@ -308,7 +359,7 @@ export default function ChatPage() {
       <div className="flex-1 flex flex-col min-w-0">
         {/* Channel header */}
         <div className="h-11 flex items-center gap-2 px-4 border-b border-bg-border shrink-0 bg-bg-card">
-          <Hash size={13} className="text-tx-muted" />
+          {canalInfo?.tipo === 'dm' ? <User size={13} className="text-tx-muted" /> : canalInfo?.tipo === 'private' ? <Lock size={13} className="text-tx-muted" /> : <Hash size={13} className="text-tx-muted" />}
           <p className="font-display text-xs font-semibold tracking-wider uppercase text-tx-primary">
             {canalInfo?.icono && <span className="mr-1">{canalInfo.icono}</span>}
             {canalInfo?.tipo === 'dm'
@@ -317,11 +368,14 @@ export default function ChatPage() {
           </p>
           {canalInfo?.descripcion && <p className="font-mono text-[8px] text-tx-muted hidden sm:block">— {canalInfo.descripcion}</p>}
           <div className="ml-auto flex items-center gap-2">
-            {(canalInfo?.tipo === 'supervisory' || canalInfo?.tipo === 'comando') && (
+            {(canalInfo?.tipo === 'supervisory' || canalInfo?.tipo === 'comando' || canalInfo?.tipo === 'private') && (
               <div className="flex items-center gap-1">
                 <Lock size={10} className="text-tx-muted" />
-                <span className="font-mono text-[7px] text-tx-muted uppercase">Restringido</span>
+                <span className="font-mono text-[7px] text-tx-muted uppercase">{canalInfo?.tipo === 'private' ? 'Participantes' : 'Restringido'}</span>
               </div>
+            )}
+            {canalInfo?.tipo === 'private' && Array.isArray(canalInfo.participantes) && (
+              <span className="font-mono text-[7px] text-tx-dim hidden md:block">{canalInfo.participantes.join(', ')}</span>
             )}
             <div className="w-1.5 h-1.5 rounded-full bg-accent-green animate-pulse" />
             <span className="font-mono text-[7px] text-accent-green tracking-widest hidden sm:block">EN VIVO</span>
@@ -406,7 +460,7 @@ export default function ChatPage() {
                 <input
                   ref={inputRef}
                   className="flex-1 bg-transparent px-3 py-2.5 text-sm text-tx-primary placeholder-tx-muted focus:outline-none"
-                  placeholder={`Mensaje${canalInfo?.nombre ? ` en ${canalInfo.tipo !== 'dm' ? '#' : '@'}${canalInfo.nombre}` : ''}...`}
+                  placeholder={`Mensaje${canalInfo?.nombre ? ` en ${['dm', 'private'].includes(canalInfo.tipo) ? '@' : '#'}${canalInfo.nombre}` : ''}...`}
                   value={texto}
                   onChange={e => setTexto(e.target.value)}
                   disabled={sending}

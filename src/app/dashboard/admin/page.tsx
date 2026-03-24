@@ -14,6 +14,7 @@ import {
   Clock3,
   ImagePlus,
   Settings2,
+  Globe,
 } from 'lucide-react'
 import {
   getInvites,
@@ -27,10 +28,13 @@ import {
   submitForm,
   getFormResponses,
   deleteFormResponse,
+  getConfigVisual,
+  setConfigVisual,
 } from '@/lib/client'
 import { FORM_BRANCHES, FORM_CLASSES } from '@/lib/forms-db'
+import { buildGoogleFormUrls } from '@/lib/google-forms'
 
-type Tab = 'invites' | 'users' | 'callsigns' | 'forms'
+type Tab = 'invites' | 'users' | 'callsigns' | 'forms' | 'website'
 type FieldType = 'text' | 'textarea' | 'number' | 'date' | 'select' | 'radio' | 'checkbox' | 'image'
 
 type BuilderField = {
@@ -119,6 +123,8 @@ export default function AdminPage() {
   const [selectedFormForResponses, setSelectedFormForResponses] = useState<string>('')
   const [formAnswers, setFormAnswers] = useState<Record<string, Record<string, any>>>({})
   const [formStartedAt, setFormStartedAt] = useState<Record<string, number>>({})
+  const [websiteConfig, setWebsiteConfig] = useState<any>(null)
+  const [websiteSaving, setWebsiteSaving] = useState(false)
 
   const isCS = user?.rol === 'command_staff'
   const canManageForms = ['command_staff', 'supervisory'].includes(user?.rol)
@@ -129,13 +135,14 @@ export default function AdminPage() {
   }, [])
 
   useEffect(() => {
-    if (!isCS && tab === 'invites') setTab('users')
+    if (!isCS && (tab === 'invites' || tab === 'website')) setTab('users')
   }, [isCS, tab])
 
   useEffect(() => {
     if (tab === 'invites') loadInvites()
     if (tab === 'users' || tab === 'callsigns') loadUsers()
     if (tab === 'forms') loadForms()
+    if (tab === 'website') loadWebsiteConfig()
   }, [tab])
 
   async function loadInvites() {
@@ -168,6 +175,18 @@ export default function AdminPage() {
       setFormStartedAt(started)
     } catch {
       setFormsData({ forms: [], canManage: false })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function loadWebsiteConfig() {
+    setLoading(true)
+    try {
+      const data = await getConfigVisual()
+      setWebsiteConfig(data)
+    } catch (e: any) {
+      setToast({ msg: e.message || 'No se pudo cargar configuración pública', ok: false })
     } finally {
       setLoading(false)
     }
@@ -425,6 +444,20 @@ export default function AdminPage() {
     }
   }
 
+  async function saveWebsiteConfig() {
+    if (!isCS || !websiteConfig) return
+    setWebsiteSaving(true)
+    try {
+      await setConfigVisual(websiteConfig)
+      setToast({ msg: 'Configuración pública guardada', ok: true })
+      await loadWebsiteConfig()
+    } catch (e: any) {
+      setToast({ msg: e.message || 'No se pudo guardar configuración pública', ok: false })
+    } finally {
+      setWebsiteSaving(false)
+    }
+  }
+
   const filtrados = useMemo(() => invites.filter((i) => {
     if (filtro === 'activos') return !i.agotado
     if (filtro === 'agotados') return i.agotado
@@ -436,9 +469,10 @@ export default function AdminPage() {
     { id: 'users' as Tab, icon: Users, label: 'Usuarios' },
     { id: 'callsigns' as Tab, icon: Shield, label: 'Callsigns' },
     { id: 'forms' as Tab, icon: ClipboardList, label: 'Formularios' },
+    { id: 'website' as Tab, icon: Globe, label: 'Website' },
   ]
 
-  const visibleTabs = isCS ? TABS : TABS.filter((t) => t.id !== 'invites')
+  const visibleTabs = isCS ? TABS : TABS.filter((t) => t.id !== 'invites' && t.id !== 'website')
 
   return (
     <div className="max-w-6xl mx-auto">
@@ -754,6 +788,95 @@ export default function AdminPage() {
                 </tbody>
               </table>
             </div>
+          )}
+        </div>
+      )}
+
+      {tab === 'website' && isCS && (
+        <div className="space-y-4">
+          {!websiteConfig ? (
+            <div className="card p-6"><p className="font-mono text-xs text-tx-muted">Cargando configuración pública...</p></div>
+          ) : (
+            <>
+              <div className="card p-5 flex flex-col gap-4 border-cyan-700/30">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <span className="section-tag">// Website Pública</span>
+                    <p className="text-xs text-tx-secondary mt-1">Este bloque reemplaza el antiguo panel de indra.</p>
+                  </div>
+                  <button onClick={saveWebsiteConfig} disabled={websiteSaving} className="btn-primary py-2">{websiteSaving ? 'Guardando...' : 'Guardar website'}</button>
+                </div>
+
+                <div>
+                  <label className="label">Texto de Misión</label>
+                  <textarea className="input min-h-24" value={websiteConfig.textoMision || ''} onChange={(e) => setWebsiteConfig((p: any) => ({ ...p, textoMision: e.target.value }))} />
+                </div>
+
+                <div>
+                  <label className="label">Título Oposiciones</label>
+                  <input className="input" value={websiteConfig.oposicionesInfo?.titulo || ''} onChange={(e) => setWebsiteConfig((p: any) => ({ ...p, oposicionesInfo: { ...(p.oposicionesInfo || {}), titulo: e.target.value } }))} />
+                </div>
+
+                <div>
+                  <label className="label">Descripción Oposiciones</label>
+                  <textarea className="input min-h-24" value={websiteConfig.oposicionesInfo?.descripcion || ''} onChange={(e) => setWebsiteConfig((p: any) => ({ ...p, oposicionesInfo: { ...(p.oposicionesInfo || {}), descripcion: e.target.value } }))} />
+                </div>
+
+                <div>
+                  <label className="label">Referencia Google Forms</label>
+                  <input className="input" value={websiteConfig.oposicionesInfo?.googleFormId || ''} onChange={(e) => setWebsiteConfig((p: any) => ({ ...p, oposicionesInfo: { ...(p.oposicionesInfo || {}), googleFormId: e.target.value } }))} placeholder="URL completa o ID del formulario" />
+                  <p className="font-mono text-[8px] text-tx-dim mt-1">Acepta URL completa, ID de /d/e/ o ID de /d/.</p>
+                </div>
+
+                {(() => {
+                  const google = buildGoogleFormUrls(websiteConfig.oposicionesInfo?.googleFormId || '')
+                  if (!google.openUrl) return null
+                  return (
+                    <div className="border border-bg-border bg-bg-surface p-3">
+                      <p className="font-mono text-[8px] text-tx-muted uppercase mb-2">Preview del formulario</p>
+                      <iframe title="Google Form Preview" src={google.embedUrl} className="w-full h-[360px] border border-bg-border bg-black" loading="lazy" />
+                      <a href={google.openUrl} target="_blank" rel="noreferrer" className="font-mono text-[9px] text-accent-blue hover:underline mt-2 inline-block">Abrir formulario</a>
+                    </div>
+                  )
+                })()}
+
+                <div>
+                  <label className="label">Intro del formulario</label>
+                  <textarea className="input min-h-20" value={websiteConfig.oposicionesInfo?.formularioIntro || ''} onChange={(e) => setWebsiteConfig((p: any) => ({ ...p, oposicionesInfo: { ...(p.oposicionesInfo || {}), formularioIntro: e.target.value } }))} />
+                </div>
+
+                <div>
+                  <label className="label">Pasos (uno por línea)</label>
+                  <textarea className="input min-h-20" value={Array.isArray(websiteConfig.oposicionesInfo?.formularioPasos) ? websiteConfig.oposicionesInfo.formularioPasos.join('\n') : ''} onChange={(e) => setWebsiteConfig((p: any) => ({ ...p, oposicionesInfo: { ...(p.oposicionesInfo || {}), formularioPasos: e.target.value.split('\n').map((x) => x.trim()).filter(Boolean) } }))} />
+                </div>
+
+                <div>
+                  <label className="label">Datos clave (uno por línea)</label>
+                  <textarea className="input min-h-24" value={Array.isArray(websiteConfig.oposicionesInfo?.datos) ? websiteConfig.oposicionesInfo.datos.join('\n') : ''} onChange={(e) => setWebsiteConfig((p: any) => ({ ...p, oposicionesInfo: { ...(p.oposicionesInfo || {}), datos: e.target.value.split('\n').map((x) => x.trim()).filter(Boolean) } }))} />
+                </div>
+
+                <div>
+                  <label className="label">Imágenes de oposiciones (una por línea)</label>
+                  <textarea className="input min-h-24" value={Array.isArray(websiteConfig.oposicionesInfo?.imagenes) ? websiteConfig.oposicionesInfo.imagenes.join('\n') : ''} onChange={(e) => setWebsiteConfig((p: any) => ({ ...p, oposicionesInfo: { ...(p.oposicionesInfo || {}), imagenes: e.target.value.split('\n').map((x) => x.trim()).filter(Boolean) } }))} />
+                </div>
+              </div>
+
+              <div className="card p-5 flex flex-col gap-4 border-cyan-700/30">
+                <span className="section-tag">// Comunicados</span>
+                <div>
+                  <label className="label">Título</label>
+                  <input className="input" value={websiteConfig.comunicadosInfo?.titulo || ''} onChange={(e) => setWebsiteConfig((p: any) => ({ ...p, comunicadosInfo: { ...(p.comunicadosInfo || {}), titulo: e.target.value } }))} />
+                </div>
+                <div>
+                  <label className="label">Descripción</label>
+                  <textarea className="input min-h-16" value={websiteConfig.comunicadosInfo?.descripcion || ''} onChange={(e) => setWebsiteConfig((p: any) => ({ ...p, comunicadosInfo: { ...(p.comunicadosInfo || {}), descripcion: e.target.value } }))} />
+                </div>
+                <div>
+                  <label className="label">Items (estado|titulo|detalle|enlace)</label>
+                  <textarea className="input min-h-28" value={Array.isArray(websiteConfig.comunicadosInfo?.items) ? websiteConfig.comunicadosInfo.items.map((it: any) => `${it.estado || 'activo'}|${it.titulo || ''}|${it.detalle || ''}|${it.enlace || ''}`).join('\n') : ''} onChange={(e) => setWebsiteConfig((p: any) => ({ ...p, comunicadosInfo: { ...(p.comunicadosInfo || {}), items: e.target.value.split('\n').map((line, idx) => { const [estado = 'activo', titulo = '', detalle = '', enlace = ''] = line.split('|'); return { id: `com-${idx + 1}`, estado: estado.trim(), titulo: titulo.trim(), detalle: detalle.trim(), enlace: enlace.trim(), fecha: new Date().toISOString() } }).filter((x) => x.titulo) } }))} />
+                </div>
+              </div>
+            </>
           )}
         </div>
       )}

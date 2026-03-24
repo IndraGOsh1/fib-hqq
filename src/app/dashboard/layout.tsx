@@ -2,9 +2,10 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { useEffect, useState, useRef, useCallback } from 'react'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { LayoutDashboard, Users, FolderOpen, Car, FileSearch, Ticket, MessageSquare, FolderArchive, Shield, Settings, LogOut, Menu, X, Bell, ChevronRight } from 'lucide-react'
 import { useTheme } from '@/lib/theme-context'
+import { readJsonSafely } from '@/lib/client'
 
 function isTokenExpired(token: string): boolean {
   try {
@@ -66,7 +67,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [user, setUser] = useState<any>(null)
   const [notifCount, setNotifCount] = useState(0)
   const [showNotifDot, setShowNotifDot] = useState(false)
+  const [notifTargets, setNotifTargets] = useState({ tickets: 0, allanamientos: 0 })
   const pathname = usePathname()
+  const router = useRouter()
   const { theme } = useTheme()
   const pollingRef = useRef<ReturnType<typeof setInterval>|null>(null)
 
@@ -85,7 +88,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       try {
         const res = await fetch('/api/auth/me', { headers: { Authorization: `Bearer ${token}` } })
         if (!res.ok) throw new Error('unauthorized')
-        const me = await res.json()
+        const me = await readJsonSafely<any>(res, null)
+        if (!me) throw new Error('invalid-session')
         if (!alive) return
         localStorage.setItem('fib_user', JSON.stringify(me))
         setUser(me)
@@ -122,13 +126,22 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         fetch('/api/tickets?estado=abierto', { headers: { Authorization: `Bearer ${token}` } }),
         fetch('/api/allanamientos?estado=pendiente', { headers: { Authorization: `Bearer ${token}` } }),
       ])
-      const tickets = ticketsRes.ok ? await ticketsRes.json() : []
-      const alls    = allRes.ok    ? await allRes.json()    : []
+      const tickets = ticketsRes.ok ? await readJsonSafely<any[]>(ticketsRes, []) : []
+      const alls    = allRes.ok    ? await readJsonSafely<any[]>(allRes, [])    : []
       const count   = (Array.isArray(tickets) ? tickets.length : 0) + (Array.isArray(alls) ? alls.length : 0)
+      setNotifTargets({ tickets: Array.isArray(tickets) ? tickets.length : 0, allanamientos: Array.isArray(alls) ? alls.length : 0 })
       setNotifCount(count)
       setShowNotifDot(count > 0)
     } catch { /* silent */ }
   }, [])
+
+  const openNotifications = () => {
+    if (notifTargets.allanamientos > 0) {
+      router.push('/dashboard/allanamientos')
+      return
+    }
+    router.push('/dashboard/tickets')
+  }
 
   useEffect(() => {
     pollNotifications()
@@ -237,7 +250,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{backgroundColor:theme.accentColor}}/>
               <span className="font-mono text-[8px] tracking-widest" style={{color:theme.accentColor}}>ONLINE</span>
             </div>
-            <button className="relative text-tx-muted hover:text-tx-primary transition-colors" title={notifCount > 0 ? `${notifCount} pendiente(s)` : 'Sin pendientes'}>
+            <button onClick={openNotifications} className="relative text-tx-muted hover:text-tx-primary transition-colors" title={notifCount > 0 ? `${notifCount} pendiente(s)` : 'Sin pendientes'}>
               <Bell size={14}/>
               {showNotifDot && (
                 <span className="absolute -top-1 -right-1 w-3.5 h-3.5 flex items-center justify-center text-[7px] font-bold rounded-full" style={{ backgroundColor: theme.accentColor, color: '#000' }}>

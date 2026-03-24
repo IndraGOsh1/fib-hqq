@@ -4,6 +4,8 @@ import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { Lock, ChevronRight, Shield, Globe } from 'lucide-react'
+import { buildGoogleFormUrls } from '@/lib/google-forms'
+import { readJsonSafely } from '@/lib/client'
 
 const TIPO_TAG: Record<string,string> = {
   operativo: 'tag border-blue-700/50 bg-blue-900/20 text-blue-400',
@@ -126,12 +128,15 @@ export default function Home() {
   const [oposPosts, setOposPosts] = useState<OposicionPost[]>([])
 
   useEffect(() => {
-    fetch('/api/config-visual').then(r => r.json()).then(setConfig).catch(() => {})
+    fetch('/api/config-visual', { cache:'no-store' })
+      .then(r => readJsonSafely<LandingConfig>(r, {}))
+      .then(setConfig)
+      .catch(() => {})
   }, [])
 
   useEffect(() => {
-    fetch('/api/operativos?publica=1')
-      .then(r => r.json())
+    fetch('/api/operativos?publica=1', { cache:'no-store' })
+      .then(r => readJsonSafely<any[]>(r, []))
       .then((rows) => {
         const all = Array.isArray(rows) ? rows : []
         const related = all
@@ -151,9 +156,8 @@ export default function Home() {
   const oposDatos = Array.isArray(oposInfo.datos) ? oposInfo.datos : []
   const oposImagenes = Array.isArray(oposInfo.imagenes) ? oposInfo.imagenes : []
   const configuredFormId = String(oposInfo.googleFormId || '').trim()
-  const googleFormId = configuredFormId || '1HaC8ZxgE4dCHu57ZB9IhzGDoNsRmriDccGg3BD_kX94'
-  const googleFormEmbedUrl = `https://docs.google.com/forms/d/e/${googleFormId}/viewform?embedded=true`
-  const googleFormOpenUrl = `https://docs.google.com/forms/d/e/${googleFormId}/viewform`
+  const googleFormRef = configuredFormId || 'd:1HaC8ZxgE4dCHu57ZB9IhzGDoNsRmriDccGg3BD_kX94'
+  const { embedUrl: googleFormEmbedUrl, openUrl: googleFormOpenUrl } = buildGoogleFormUrls(googleFormRef)
   const ws = {
     enableAnimations: config.websiteSettings?.enableAnimations !== false,
     heroLogoSize: config.websiteSettings?.heroLogoSize ?? 130,

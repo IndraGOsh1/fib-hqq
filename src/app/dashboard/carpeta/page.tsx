@@ -1,7 +1,11 @@
 'use client'
 import { useEffect, useState, useRef, useCallback } from 'react'
-import { Plus, Trash2, FileText, StickyNote, Lock, X, CheckCircle, AlertCircle, ChevronDown, ChevronUp, Search, User, ChevronRight } from 'lucide-react'
-import { getCarpeta, crearAnotacion, borrarCarpetaItem, getAgente } from '@/lib/client'
+import { Plus, Trash2, FileText, StickyNote, Lock, X, CheckCircle, AlertCircle, ChevronDown, ChevronUp, Search, User, MessageSquare } from 'lucide-react'
+import { getCarpeta, crearAnotacion, borrarCarpetaItem, getAgente, crearHiloCarpeta, enviarMensajeHiloCarpeta, setEstadoHiloCarpeta } from '@/lib/client'
+
+function formatThreadParticipants(participantes: string[] = []) {
+  return participantes.join(', ')
+}
 
 function Toast({ msg, ok, onClose }: { msg:string; ok:boolean; onClose:()=>void }) {
   useEffect(() => { const t = setTimeout(onClose, 3000); return () => clearTimeout(t) }, [])
@@ -94,17 +98,82 @@ function PersonalSearchDropdown({ onSelect, placeholder = 'Buscar agente...' }: 
 function CarpetaExterna({ agente, onClose }: { agente: any; onClose: () => void }) {
   const [carpeta, setCarpeta] = useState<any>(null)
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState<'ficha'|'anotaciones'|'documentos'>('ficha')
+  const [tab, setTab] = useState<'ficha'|'anotaciones'|'documentos'|'hilos'>('ficha')
+  const [threadText, setThreadText] = useState('')
+  const [threadBusy, setThreadBusy] = useState(false)
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(null)
 
-  useEffect(() => {
+  const loadCarpeta = useCallback(() => {
     const token = localStorage.getItem('fib_token') || ''
-    fetch(`/api/carpeta?username=${encodeURIComponent(agente.username || agente.nombre)}`, {
+    const params = new URLSearchParams()
+    if (agente.username) params.set('username', agente.username)
+    if (agente.numero) params.set('agentNumber', String(agente.numero))
+    if (agente.discordId) params.set('discordId', String(agente.discordId))
+    return fetch(`/api/carpeta?${params.toString()}`, {
       headers: { Authorization: `Bearer ${token}` }
     })
-    .then(r => r.json())
-    .then(d => { setCarpeta(d); setLoading(false) })
-    .catch(() => setLoading(false))
+      .then(r => r.json())
+      .then(d => { setCarpeta(d); setLoading(false) })
+      .catch(() => setLoading(false))
   }, [agente])
+
+  useEffect(() => {
+    loadCarpeta()
+  }, [loadCarpeta])
+
+  const activeThread = carpeta?.hilos?.find((hilo: any) => hilo.id === activeThreadId) || carpeta?.hilos?.[0]
+
+  async function enviarMensaje() {
+    if (!activeThread?.id || !threadText.trim() || threadBusy) return
+    setThreadBusy(true)
+    try {
+      const token = localStorage.getItem('fib_token') || ''
+      const params = new URLSearchParams()
+      if (agente.username) params.set('username', agente.username)
+      if (agente.numero) params.set('agentNumber', String(agente.numero))
+      if (agente.discordId) params.set('discordId', String(agente.discordId))
+      await fetch(`/api/carpeta?${params.toString()}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ tipo: 'hilo_mensaje', hiloId: activeThread.id, contenido: threadText.trim() })
+      }).then(async (r) => {
+        const data = await r.json().catch(() => ({}))
+        if (!r.ok) throw new Error(data?.error || 'No se pudo enviar el mensaje')
+      })
+      setThreadText('')
+      await loadCarpeta()
+    } finally {
+      setThreadBusy(false)
+    }
+  }
+
+  async function toggleEstado(hilo: any) {
+    setThreadBusy(true)
+    try {
+      const token = localStorage.getItem('fib_token') || ''
+      const params = new URLSearchParams()
+      if (agente.username) params.set('username', agente.username)
+      if (agente.numero) params.set('agentNumber', String(agente.numero))
+      if (agente.discordId) params.set('discordId', String(agente.discordId))
+      await fetch(`/api/carpeta?${params.toString()}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ tipo: 'hilo_estado', hiloId: hilo.id, estado: hilo.estado === 'abierto' ? 'cerrado' : 'abierto' })
+      }).then(async (r) => {
+        const data = await r.json().catch(() => ({}))
+        if (!r.ok) throw new Error(data?.error || 'No se pudo actualizar el hilo')
+      })
+      await loadCarpeta()
+    } finally {
+      setThreadBusy(false)
+    }
+  }
 
   const ESTADO_TAG: Record<string,string> = {
     Activo:    'tag border-green-700 bg-green-900/20 text-green-400',
@@ -126,7 +195,7 @@ function CarpetaExterna({ agente, onClose }: { agente: any; onClose: () => void 
         </div>
 
         <div className="flex border-b border-bg-border shrink-0">
-          {(['ficha','anotaciones','documentos'] as const).map(t => (
+          {(['ficha','anotaciones','documentos','hilos'] as const).map(t => (
             <button key={t} onClick={() => setTab(t)}
               className={`px-4 py-2.5 font-mono text-[9px] tracking-widest uppercase transition-all border-b-2 -mb-px ${tab===t?'border-accent-blue text-accent-blue':'border-transparent text-tx-muted hover:text-tx-secondary'}`}>
               {t}
@@ -176,7 +245,7 @@ function CarpetaExterna({ agente, onClose }: { agente: any; onClose: () => void 
                 ))
               }
             </div>
-          ) : (
+          ) : tab === 'documentos' ? (
             <div className="flex flex-col gap-2">
               {!carpeta?.documentos?.length
                 ? <p className="text-center py-8 font-mono text-xs text-tx-muted">Sin documentos</p>
@@ -190,6 +259,79 @@ function CarpetaExterna({ agente, onClose }: { agente: any; onClose: () => void 
                   </div>
                 ))
               }
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)] gap-4">
+              <div className="border border-bg-border bg-bg-surface">
+                <div className="px-3 py-2 border-b border-bg-border">
+                  <p className="font-mono text-[8px] uppercase tracking-widest text-tx-muted">Hilos privados</p>
+                </div>
+                {!carpeta?.hilos?.length ? (
+                  <p className="px-3 py-6 font-mono text-[10px] text-tx-muted text-center">Sin hilos accesibles</p>
+                ) : (
+                  <div className="flex flex-col">
+                    {carpeta.hilos.map((hilo: any) => (
+                      <button
+                        key={hilo.id}
+                        onClick={() => setActiveThreadId(hilo.id)}
+                        className={`w-full text-left px-3 py-2 border-b border-bg-border transition-colors ${activeThread?.id === hilo.id ? 'bg-accent-blue/10 text-accent-blue' : 'hover:bg-bg-hover text-tx-secondary'}`}
+                      >
+                        <p className="text-sm font-medium truncate">{hilo.titulo}</p>
+                        <p className="font-mono text-[8px] text-tx-muted uppercase">{hilo.estado} · {hilo.mensajes?.length || 0} mensajes</p>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="border border-bg-border bg-bg-surface min-h-64 flex flex-col">
+                {!activeThread ? (
+                  <div className="flex-1 flex items-center justify-center text-center px-4">
+                    <div>
+                      <MessageSquare size={28} className="mx-auto mb-2 text-tx-muted opacity-20" />
+                      <p className="font-mono text-xs text-tx-muted uppercase tracking-widest">Selecciona un hilo</p>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="px-4 py-3 border-b border-bg-border">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="font-display text-sm font-semibold tracking-wider uppercase text-tx-primary">{activeThread.titulo}</p>
+                          <p className="font-mono text-[8px] text-tx-muted">Participantes: {formatThreadParticipants(activeThread.participantes)}</p>
+                        </div>
+                        <button onClick={() => toggleEstado(activeThread)} className="btn-ghost py-1 px-2 text-[9px]">
+                          {activeThread.estado === 'abierto' ? 'Cerrar hilo' : 'Reabrir hilo'}
+                        </button>
+                      </div>
+                      {activeThread.descripcion && <p className="text-xs text-tx-secondary mt-2">{activeThread.descripcion}</p>}
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
+                      {(activeThread.mensajes || []).map((mensaje: any) => (
+                        <div key={mensaje.id} className={`border px-3 py-2 ${mensaje.sistema ? 'border-bg-border text-tx-muted bg-bg-card' : 'border-accent-blue/20 bg-bg-card'}`}>
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="font-mono text-[9px] uppercase tracking-widest text-accent-blue">{mensaje.nombre}</p>
+                            <p className="font-mono text-[8px] text-tx-muted">{new Date(mensaje.fecha).toLocaleString('es')}</p>
+                          </div>
+                          <p className="text-sm text-tx-secondary mt-1 whitespace-pre-wrap">{mensaje.contenido}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="px-4 py-3 border-t border-bg-border flex gap-2">
+                      <input
+                        className="input text-sm flex-1"
+                        placeholder={activeThread.estado === 'cerrado' ? 'Este hilo está cerrado' : 'Responder en este hilo privado'}
+                        value={threadText}
+                        onChange={(e) => setThreadText(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && enviarMensaje()}
+                        disabled={threadBusy || activeThread.estado === 'cerrado'}
+                      />
+                      <button onClick={enviarMensaje} disabled={threadBusy || !threadText.trim() || activeThread.estado === 'cerrado'} className="btn-primary py-2 text-[9px] px-3">
+                        Enviar
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -205,15 +347,20 @@ export default function CarpetaPage() {
   const [agente,   setAgente]   = useState<any>(null)
   const [loading,  setLoading]  = useState(true)
   const [toast,    setToast]    = useState<{msg:string;ok:boolean}|null>(null)
-  const [tab,      setTab]      = useState<'ficha'|'anotaciones'|'documentos'>('ficha')
+  const [tab,      setTab]      = useState<'ficha'|'anotaciones'|'documentos'|'hilos'>('ficha')
   const [showForm, setShowForm] = useState(false)
   const [form,     setForm]     = useState({ titulo:'', contenido:'', privada:false })
+  const [showThreadForm, setShowThreadForm] = useState(false)
+  const [threadForm, setThreadForm] = useState({ titulo:'', descripcion:'', participantes:'' })
+  const [threadReply, setThreadReply] = useState('')
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(null)
   const [saving,   setSaving]   = useState(false)
   const [expanded, setExpanded] = useState<string|null>(null)
   // For command/supervisory: viewing another agent's carpeta
   const [carpetaExterna, setCarpetaExterna] = useState<any>(null)
 
   const isSuperv = ['command_staff','supervisory'].includes(user?.rol)
+  const activeThread = carpeta?.hilos?.find((hilo: any) => hilo.id === activeThreadId) || carpeta?.hilos?.[0]
 
   useEffect(() => {
     const u = localStorage.getItem('fib_user')
@@ -254,6 +401,62 @@ export default function CarpetaPage() {
       setCarpeta(c)
       setToast({ msg:'Eliminado', ok:true })
     } catch {}
+  }
+
+  async function recargarCarpeta() {
+    const c = await getCarpeta()
+    setCarpeta(c)
+  }
+
+  async function guardarHilo(e: React.FormEvent) {
+    e.preventDefault()
+    setSaving(true)
+    try {
+      const participantes = threadForm.participantes
+        .split(/[,\n]/)
+        .map((entry) => entry.trim())
+        .filter(Boolean)
+      await crearHiloCarpeta({
+        titulo: threadForm.titulo,
+        descripcion: threadForm.descripcion,
+        participantes,
+      })
+      await recargarCarpeta()
+      setThreadForm({ titulo:'', descripcion:'', participantes:'' })
+      setShowThreadForm(false)
+      setToast({ msg:'Hilo privado creado', ok:true })
+    } catch (err: any) {
+      setToast({ msg: err.message, ok:false })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function responderHilo() {
+    if (!activeThread?.id || !threadReply.trim()) return
+    setSaving(true)
+    try {
+      await enviarMensajeHiloCarpeta(activeThread.id, threadReply.trim())
+      setThreadReply('')
+      await recargarCarpeta()
+    } catch (err: any) {
+      setToast({ msg: err.message, ok:false })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function cambiarEstadoHilo() {
+    if (!activeThread?.id) return
+    setSaving(true)
+    try {
+      await setEstadoHiloCarpeta(activeThread.id, activeThread.estado === 'abierto' ? 'cerrado' : 'abierto')
+      await recargarCarpeta()
+    } catch (err: any) {
+      setToast({ msg: err.message, ok:false })
+    } finally {
+      setSaving(false)
+    }
   }
 
   const ESTADO_TAG: Record<string,string> = {
@@ -300,6 +503,7 @@ export default function CarpetaPage() {
           { id:'ficha',       label:'Mi Ficha' },
           { id:'anotaciones', label:`Anotaciones (${carpeta?.anotaciones?.length||0})` },
           { id:'documentos',  label:`Documentos (${carpeta?.documentos?.length||0})` },
+          { id:'hilos',       label:`Hilos (${carpeta?.hilos?.length||0})` },
         ].map(t => (
           <button key={t.id} onClick={() => setTab(t.id as any)}
             className={`px-4 py-2.5 font-mono text-[9px] tracking-widest uppercase transition-all border-b-2 -mb-px ${tab===t.id?'border-accent-blue text-accent-blue':'border-transparent text-tx-muted hover:text-tx-secondary'}`}>
@@ -479,6 +683,107 @@ export default function CarpetaPage() {
                   <button onClick={()=>borrar('documento',d.id)} className="text-tx-muted hover:text-red-400 transition-colors p-1"><Trash2 size={12}/></button>
                 </div>
               ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === 'hilos' && (
+        <div>
+          <div className="flex items-center justify-between mb-4 gap-3">
+            <div>
+              <p className="font-mono text-[9px] text-tx-muted tracking-widest uppercase">Hilos privados estilo ticket</p>
+              <p className="font-mono text-[8px] text-tx-dim mt-1">Solo entran los usernames agregados al hilo</p>
+            </div>
+            <button onClick={() => setShowThreadForm((prev) => !prev)} className="btn-primary py-2 text-[9px]"><Plus size={11}/>Nuevo hilo</button>
+          </div>
+
+          {showThreadForm && (
+            <form onSubmit={guardarHilo} className="card p-4 mb-4 flex flex-col gap-3">
+              <div>
+                <label className="label">Título</label>
+                <input className="input" value={threadForm.titulo} onChange={(e) => setThreadForm((prev) => ({ ...prev, titulo: e.target.value }))} placeholder="Incidente, seguimiento, coordinación..." required />
+              </div>
+              <div>
+                <label className="label">Descripción inicial</label>
+                <textarea className="input min-h-24 resize-y text-xs" value={threadForm.descripcion} onChange={(e) => setThreadForm((prev) => ({ ...prev, descripcion: e.target.value }))} placeholder="Contexto del hilo" />
+              </div>
+              <div>
+                <label className="label">Participantes</label>
+                <input className="input" value={threadForm.participantes} onChange={(e) => setThreadForm((prev) => ({ ...prev, participantes: e.target.value }))} placeholder="user1, user2, user3" required />
+              </div>
+              <div className="flex justify-end gap-2">
+                <button type="button" onClick={() => setShowThreadForm(false)} className="btn-ghost py-1.5 px-3 text-[9px]">Cancelar</button>
+                <button type="submit" disabled={saving} className="btn-primary py-1.5 px-3 text-[9px]">{saving ? 'Guardando...' : 'Crear hilo'}</button>
+              </div>
+            </form>
+          )}
+
+          {!carpeta?.hilos?.length ? (
+            <div className="card p-12 flex flex-col items-center gap-3 text-tx-muted">
+              <MessageSquare size={28} className="opacity-20"/>
+              <p className="font-mono text-xs tracking-widest uppercase">Sin hilos privados</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)] gap-4">
+              <div className="card p-0 overflow-hidden">
+                {(carpeta.hilos || []).slice().reverse().map((hilo: any) => (
+                  <button
+                    key={hilo.id}
+                    onClick={() => setActiveThreadId(hilo.id)}
+                    className={`w-full text-left px-4 py-3 border-b border-bg-border last:border-0 transition-colors ${activeThread?.id === hilo.id ? 'bg-accent-blue/10' : 'hover:bg-bg-hover'}`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-medium text-tx-primary truncate">{hilo.titulo}</p>
+                      <span className={`font-mono text-[8px] uppercase ${hilo.estado === 'abierto' ? 'text-green-400' : 'text-red-400'}`}>{hilo.estado}</span>
+                    </div>
+                    <p className="font-mono text-[8px] text-tx-muted mt-1 truncate">{formatThreadParticipants(hilo.participantes)}</p>
+                  </button>
+                ))}
+              </div>
+
+              <div className="card p-0 overflow-hidden min-h-[26rem] flex flex-col">
+                {!activeThread ? (
+                  <div className="flex-1 flex items-center justify-center">
+                    <p className="font-mono text-xs text-tx-muted uppercase tracking-widest">Selecciona un hilo</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="px-4 py-3 border-b border-bg-border bg-bg-surface">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-display text-sm font-semibold tracking-wider uppercase text-tx-primary">{activeThread.titulo}</p>
+                          <p className="font-mono text-[8px] text-tx-muted mt-1">Participantes: {formatThreadParticipants(activeThread.participantes)}</p>
+                          {activeThread.descripcion && <p className="text-xs text-tx-secondary mt-2">{activeThread.descripcion}</p>}
+                        </div>
+                        <button onClick={cambiarEstadoHilo} className="btn-ghost py-1 px-2 text-[9px]">{activeThread.estado === 'abierto' ? 'Cerrar' : 'Reabrir'}</button>
+                      </div>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3 bg-bg-card">
+                      {(activeThread.mensajes || []).map((mensaje: any) => (
+                        <div key={mensaje.id} className={`border px-3 py-2 ${mensaje.sistema ? 'border-bg-border bg-bg-surface' : 'border-accent-blue/20 bg-bg-surface/70'}`}>
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="font-mono text-[9px] uppercase tracking-widest text-accent-blue">{mensaje.nombre}</p>
+                            <p className="font-mono text-[8px] text-tx-muted">{new Date(mensaje.fecha).toLocaleString('es')}</p>
+                          </div>
+                          <p className="text-sm text-tx-secondary mt-1 whitespace-pre-wrap">{mensaje.contenido}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="px-4 py-3 border-t border-bg-border bg-bg-surface flex gap-2">
+                      <input
+                        className="input text-sm flex-1"
+                        value={threadReply}
+                        onChange={(e) => setThreadReply(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && responderHilo()}
+                        placeholder={activeThread.estado === 'cerrado' ? 'Hilo cerrado' : 'Responder en este hilo privado'}
+                        disabled={saving || activeThread.estado === 'cerrado'}
+                      />
+                      <button onClick={responderHilo} disabled={saving || !threadReply.trim() || activeThread.estado === 'cerrado'} className="btn-primary py-2 text-[9px] px-3">Enviar</button>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           )}
         </div>

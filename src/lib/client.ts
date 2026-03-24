@@ -2,10 +2,25 @@
 
 function tok() { return typeof window !== 'undefined' ? localStorage.getItem('fib_token')||'' : '' }
 
+export async function readJsonSafely<T>(res: Response, fallback: T): Promise<T> {
+  const text = await res.text().catch(() => '')
+  if (!text.trim()) return fallback
+  try {
+    return JSON.parse(text) as T
+  } catch {
+    return fallback
+  }
+}
+
 async function api<T>(url: string, opts?: RequestInit): Promise<T> {
-  const res  = await fetch('/api'+url, { headers:{'Content-Type':'application/json',Authorization:`Bearer ${tok()}`}, ...opts })
-  const data = await res.json()
-  if (!res.ok) throw new Error(data.error||'Error de red')
+  const headers = new Headers(opts?.headers || {})
+  if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json')
+  const token = tok()
+  if (token && !headers.has('Authorization')) headers.set('Authorization', `Bearer ${token}`)
+
+  const res = await fetch('/api'+url, { cache:'no-store', ...opts, headers })
+  const data = await readJsonSafely<any>(res, {})
+  if (!res.ok) throw new Error(data?.error || data?.message || `Error ${res.status}`)
   return data as T
 }
 
@@ -41,7 +56,10 @@ export const getOperativo    = (id:string) => api<any>(`/operativos/${id}`)
 export const crearOperativo  = (b:any) => api<any>('/operativos',{method:'POST',body:JSON.stringify(b)})
 export const editarOperativo = (id:string,b:any) => api<any>(`/operativos/${id}`,{method:'PATCH',body:JSON.stringify(b)})
 export const borrarOperativo = (id:string) => api<any>(`/operativos/${id}`,{method:'DELETE'})
-export const getOperativosPublicos = (p?:Record<string,string>) => fetch('/api/operativos?publica=1'+(p?'&'+new URLSearchParams(p):'')).then(r=>r.json())
+export const getOperativosPublicos = async (p?:Record<string,string>) => {
+  const res = await fetch('/api/operativos?publica=1'+(p?'&'+new URLSearchParams(p):''), { cache:'no-store' })
+  return readJsonSafely<any>(res, [])
+}
 
 // Casos
 export const getCasos   = (p?:Record<string,string>) => api<any>('/casos'+(p?'?'+new URLSearchParams(p):''))
@@ -68,14 +86,21 @@ export const getCanales    = () => api<any>('/chat')
 export const getMensajes   = (canal:string) => api<any>(`/chat/${canal}`)
 export const enviarMensaje = (canal:string,contenido:string) => api<any>(`/chat/${canal}`,{method:'POST',body:JSON.stringify({contenido})})
 export const crearDM       = (targetUsername:string) => api<any>('/chat',{method:'POST',body:JSON.stringify({tipo:'dm',targetUsername})})
+export const crearChatPrivado = (nombre:string, participantes:string[], descripcion?:string) => api<any>('/chat',{method:'POST',body:JSON.stringify({tipo:'private',nombre,descripcion,participantes})})
 
 // Carpeta
 export const getCarpeta        = () => api<any>('/carpeta')
 export const crearAnotacion    = (b:any) => api<any>('/carpeta',{method:'POST',body:JSON.stringify({tipo:'anotacion',...b})})
 export const borrarCarpetaItem = (tipo:string,id:string) => api<any>('/carpeta',{method:'DELETE',body:JSON.stringify({tipo,id})})
+export const crearHiloCarpeta  = (b:any, username?:string) => api<any>(`/carpeta${username ? `?username=${encodeURIComponent(username)}` : ''}`,{method:'POST',body:JSON.stringify({tipo:'hilo',...b})})
+export const enviarMensajeHiloCarpeta = (hiloId:string, contenido:string, username?:string) => api<any>(`/carpeta${username ? `?username=${encodeURIComponent(username)}` : ''}`,{method:'POST',body:JSON.stringify({tipo:'hilo_mensaje',hiloId,contenido})})
+export const setEstadoHiloCarpeta = (hiloId:string, estado:'abierto'|'cerrado', username?:string) => api<any>(`/carpeta${username ? `?username=${encodeURIComponent(username)}` : ''}`,{method:'POST',body:JSON.stringify({tipo:'hilo_estado',hiloId,estado})})
 
 // Config visual
-export const getConfigVisual   = () => fetch('/api/config-visual').then(r=>r.json())
+export const getConfigVisual   = async () => {
+  const res = await fetch('/api/config-visual', { cache:'no-store' })
+  return readJsonSafely<any>(res, {})
+}
 export const setConfigVisual   = (b:any) => api<any>('/config-visual',{method:'PATCH',body:JSON.stringify(b)})
 export const resetConfigVisual = () => api<any>('/config-visual',{method:'DELETE'})
 

@@ -1,10 +1,11 @@
 'use client'
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
-import { Save, RefreshCw, CheckCircle, AlertCircle, RotateCcw, Palette, Image, Type, Bell, Key, Users, Globe, Edit3, Eye, X, Shield } from 'lucide-react'
+import { Save, RefreshCw, CheckCircle, AlertCircle, RotateCcw, Palette, Image, Type, Bell, Key, Globe } from 'lucide-react'
 import { getConfigVisual, setConfigVisual, resetConfigVisual, getInvites, crearInvite, borrarInvite } from '@/lib/client'
+import { buildGoogleFormUrls } from '@/lib/google-forms'
 
-type Tab = 'identidad'|'colores'|'fondos'|'banner'|'website'|'invitaciones'|'indra'
+type Tab = 'identidad'|'colores'|'fondos'|'banner'|'website'|'invitaciones'
 
 function Toast({ msg, ok, onClose }:{msg:string;ok:boolean;onClose:()=>void}) {
   useEffect(()=>{ const t=setTimeout(onClose,3000);return()=>clearTimeout(t) },[])
@@ -23,94 +24,6 @@ function ColorInput({ label, value, onChange, disabled }: {label:string;value:st
   )
 }
 
-// Live edit modal for Misión y Valores
-function MisionEditor({ config, onSave, onClose }: { config: any; onSave: (v: any) => Promise<void>; onClose: () => void }) {
-  const [texto, setTexto] = useState(config.descripcionDivision || '')
-  const [titulo, setTitulo] = useState(config.textoMision || 'Misión y Valores')
-  const [saving, setSaving] = useState(false)
-  const [preview, setPreview] = useState(false)
-
-  async function save() {
-    setSaving(true)
-    try {
-      await onSave({ descripcionDivision: texto, textoMision: titulo })
-      onClose()
-    } catch { } finally { setSaving(false) }
-  }
-
-  return (
-    <div className="fixed inset-0 z-[200] bg-black/80 flex items-center justify-center p-4" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="bg-bg-card border border-bg-border w-full max-w-2xl flex flex-col" style={{ maxHeight: '90vh' }}>
-        <div className="flex items-center justify-between px-5 py-4 border-b border-bg-border shrink-0">
-          <div>
-            <span className="section-tag">// Edición en Vivo</span>
-            <p className="font-display text-sm font-semibold tracking-wider uppercase text-tx-primary mt-0.5">Misión y Valores</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <button onClick={() => setPreview(p => !p)}
-              className={`flex items-center gap-1.5 font-mono text-[9px] uppercase px-3 py-1.5 border transition-all ${preview ? 'border-accent-blue text-accent-blue bg-accent-blue/10' : 'border-bg-border text-tx-muted hover:text-tx-secondary'}`}>
-              {preview ? <Edit3 size={10} /> : <Eye size={10} />}
-              {preview ? 'Editar' : 'Preview'}
-            </button>
-            <button onClick={onClose} className="text-tx-muted hover:text-tx-primary"><X size={15} /></button>
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-5">
-          {preview ? (
-            /* Preview mode — as it appears on the public page */
-            <div className="bg-[#0a0c10] rounded border border-bg-border p-8 flex flex-col gap-4">
-              <div>
-                <p className="font-mono text-[9px] tracking-widest uppercase text-accent-blue mb-1">// Declaración Institucional</p>
-                <h2 className="font-display text-3xl font-bold tracking-wider uppercase text-white">{titulo || 'Misión y Valores'}</h2>
-              </div>
-              <p className="text-sm text-gray-300 leading-relaxed max-w-md">{texto || 'Escribe aquí la descripción...'}</p>
-              <div className="mt-2">
-                <div className="inline-flex items-center gap-2 bg-accent-blue text-white font-mono text-[9px] uppercase px-4 py-2">
-                  🔒 Ingresar al Sistema →
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-4">
-              <div>
-                <label className="label">Título de la sección</label>
-                <input className="input" value={titulo} onChange={e => setTitulo(e.target.value)}
-                  placeholder="Misión y Valores" />
-                <p className="font-mono text-[8px] text-tx-dim mt-1">Aparece como encabezado grande en la página pública</p>
-              </div>
-              <div>
-                <label className="label">Texto de la misión</label>
-                <textarea
-                  className="input min-h-48 resize-y text-sm leading-relaxed"
-                  value={texto}
-                  onChange={e => setTexto(e.target.value)}
-                  placeholder="La FIB es la principal agencia de inteligencia e investigación federal..."
-                />
-                <p className="font-mono text-[8px] text-tx-dim mt-1">{texto.length} caracteres · Visible en la sección pública de Misión</p>
-              </div>
-              <div className="bg-bg-surface border border-bg-border p-3">
-                <p className="font-mono text-[8px] text-tx-muted uppercase mb-1.5">Vista rápida</p>
-                <div className="border-l-2 border-accent-blue pl-3">
-                  <p className="font-display text-sm font-bold tracking-widest uppercase text-tx-primary">{titulo || 'Misión y Valores'}</p>
-                  <p className="text-xs text-tx-secondary mt-1 leading-relaxed line-clamp-3">{texto || '(sin texto)'}</p>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="px-5 py-4 border-t border-bg-border flex gap-2 justify-end shrink-0">
-          <button onClick={onClose} className="btn-ghost py-2 px-4">Cancelar</button>
-          <button onClick={save} disabled={saving} className="btn-primary py-2">
-            <Save size={12} />{saving ? 'Guardando...' : 'Guardar cambios'}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 export default function ConfigPage() {
   const [user,    setUser]    = useState<any>(null)
   const [config,  setConfigS] = useState<any>(null)
@@ -122,11 +35,9 @@ export default function ConfigPage() {
   const [invLoading, setInvLoading] = useState(false)
   const [invForm, setInvForm] = useState({ rol:'federal_agent', maxUsos:1, nombre:'' })
   const [copied,  setCopied]  = useState('')
-  const [showMisionEditor, setShowMisionEditor] = useState(false)
 
   const isCS    = user?.rol === 'command_staff'
   const isSuperv= ['command_staff','supervisory'].includes(user?.rol)
-  const isIndra = isCS && String(user?.username || '').toLowerCase() === 'indra'
 
   useEffect(()=>{ const u=localStorage.getItem('fib_user'); if(u) setUser(JSON.parse(u)) },[])
   useEffect(()=>{
@@ -147,13 +58,6 @@ export default function ConfigPage() {
     setSaving(true)
     try { await setConfigVisual(config); setToast({msg:'✅ Configuración guardada',ok:true}) }
     catch(e:any) { setToast({msg:e.message,ok:false}) } finally { setSaving(false) }
-  }
-
-  async function guardarParcial(partial: any) {
-    const newConfig = { ...config, ...partial }
-    setConfigS(newConfig)
-    await setConfigVisual(newConfig)
-    setToast({ msg: '✅ Guardado', ok: true })
   }
 
   async function restablecer() {
@@ -181,9 +85,6 @@ export default function ConfigPage() {
   return (
     <div className="max-w-4xl mx-auto">
       {toast && <Toast msg={toast.msg} ok={toast.ok} onClose={()=>setToast(null)}/>}
-      {showMisionEditor && isIndra && (
-        <MisionEditor config={config} onSave={guardarParcial} onClose={() => setShowMisionEditor(false)} />
-      )}
 
       <div className="flex items-center justify-between mb-5">
         <div className="page-header mb-0">
@@ -200,22 +101,14 @@ export default function ConfigPage() {
 
       {!isCS && <div className="card p-3 mb-5 border-yellow-800/40 bg-yellow-900/10"><p className="font-mono text-xs text-yellow-400">Solo Command Staff puede modificar la configuración global.</p></div>}
 
-      {/* Quick action — Misión y Valores */}
-      {isIndra && (
-        <div className="card p-4 mb-5 flex items-center justify-between">
-          <div>
-            <p className="font-mono text-[9px] uppercase tracking-widest text-accent-blue mb-0.5">Edición rápida</p>
-            <p className="text-sm text-tx-primary font-medium">Misión y Valores</p>
-            <p className="font-mono text-[9px] text-tx-muted mt-0.5">Edita el texto visible en la página pública</p>
-          </div>
-          <button onClick={() => setShowMisionEditor(true)} className="btn-primary py-2 px-4">
-            <Edit3 size={12} /> Editar en vivo
-          </button>
-        </div>
-      )}
+      <div className="card p-4 mb-5 border-cyan-800/30 bg-cyan-950/10">
+        <p className="font-mono text-[9px] uppercase tracking-widest text-cyan-300 mb-1">Website pública</p>
+        <p className="text-xs text-tx-secondary">La edición de misión, oposiciones, Google Forms y comunicados ahora se gestiona desde Admin.</p>
+        <Link href="/dashboard/admin" className="btn-ghost py-1.5 text-[9px] inline-flex mt-3">Ir a Admin</Link>
+      </div>
 
       <div className="flex border-b border-bg-border mb-5 overflow-x-auto">
-        {(isIndra ? [...TABS, {id:'indra' as Tab, icon:Shield, label:'Indra'}] : TABS).map(t=>(
+        {TABS.map(t=>(
           <button key={t.id} onClick={()=>setTab(t.id)}
             className={`flex items-center gap-1.5 px-4 py-2.5 font-mono text-[9px] tracking-widest uppercase transition-all border-b-2 -mb-px whitespace-nowrap ${tab===t.id?'border-accent-blue text-accent-blue':'border-transparent text-tx-muted hover:text-tx-secondary'}`}>
             <t.icon size={11}/>{t.label}
@@ -230,17 +123,9 @@ export default function ConfigPage() {
             <span className="section-tag">// División</span>
             <div><label className="label">Nombre</label><input className="input" value={config.nombreDivision||''} onChange={setE('nombreDivision')} disabled={!isCS}/></div>
             <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="label mb-0">Descripción / Misión</label>
-                {isIndra && (
-                  <button onClick={() => setShowMisionEditor(true)} className="flex items-center gap-1 font-mono text-[8px] uppercase text-accent-blue hover:text-accent-blue/80 transition-colors">
-                    <Edit3 size={9}/> Editar en vivo
-                  </button>
-                )}
-              </div>
-              <textarea className="input min-h-20 resize-none text-sm" value={config.descripcionDivision||''} onChange={setE('descripcionDivision')} disabled={!isIndra}
+              <label className="label">Descripción institucional</label>
+              <textarea className="input min-h-20 resize-none text-sm" value={config.descripcionDivision||''} onChange={setE('descripcionDivision')} disabled={!isCS}
                 placeholder="Descripción visible en la página pública..."/>
-              {!isIndra && <p className="font-mono text-[8px] text-yellow-400 mt-1">Solo indra puede editar esta zona.</p>}
             </div>
             <div>
               <label className="label">URL del Logo</label>
@@ -322,14 +207,10 @@ export default function ConfigPage() {
           <div className="card p-5 flex flex-col gap-4">
             <div className="flex items-center justify-between">
               <span className="section-tag">// Textos de la Página Pública</span>
-              {isIndra && (
-                <button onClick={() => setShowMisionEditor(true)} className="flex items-center gap-1 font-mono text-[8px] uppercase text-accent-blue hover:text-accent-blue/80 transition-colors border border-accent-blue/30 px-2 py-1">
-                  <Edit3 size={9}/> Misión (edición en vivo)
-                </button>
-              )}
             </div>
             <div><label className="label">Título Hero</label><input className="input" value={config.textoHero||''} onChange={setE('textoHero')} disabled={!isCS} placeholder="Federal Investigation Bureau"/></div>
             <div><label className="label">Subtítulo Hero</label><input className="input" value={config.textoSubhero||''} onChange={setE('textoSubhero')} disabled={!isCS} placeholder="Sistema centralizado de gestión..."/></div>
+            <div><label className="label">Texto de Misión</label><textarea className="input min-h-20" value={config.textoMision||''} onChange={setE('textoMision')} disabled={!isCS} /></div>
           </div>
           <div className="card p-5 flex flex-col gap-4">
             <span className="section-tag">// Divisiones en la Página Pública</span>
@@ -457,198 +338,6 @@ export default function ConfigPage() {
         </div>
       )}
 
-      {tab==='indra' && isIndra && (
-        <div className="flex flex-col gap-4">
-          <div className="card p-5 flex flex-col gap-4 border-cyan-700/40">
-            <span className="section-tag">// Panel Exclusivo de indra</span>
-            <p className="text-xs text-tx-secondary">Control de la seccion publica de Mision y Oposiciones.</p>
-            <div>
-              <label className="label">Titulo de Oposiciones</label>
-              <input
-                className="input"
-                value={config.oposicionesInfo?.titulo || ''}
-                onChange={(e) => setConfigS((p: any) => ({
-                  ...p,
-                  oposicionesInfo: { ...(p.oposicionesInfo || {}), titulo: e.target.value },
-                }))}
-              />
-            </div>
-            <div>
-              <label className="label">Descripcion de Oposiciones</label>
-              <textarea
-                className="input min-h-24"
-                value={config.oposicionesInfo?.descripcion || ''}
-                onChange={(e) => setConfigS((p: any) => ({
-                  ...p,
-                  oposicionesInfo: { ...(p.oposicionesInfo || {}), descripcion: e.target.value },
-                }))}
-              />
-            </div>
-            <div>
-              <label className="label">Intro del formulario (simple y claro)</label>
-              <textarea
-                className="input min-h-20"
-                value={config.oposicionesInfo?.formularioIntro || ''}
-                onChange={(e) => setConfigS((p: any) => ({
-                  ...p,
-                  oposicionesInfo: {
-                    ...(p.oposicionesInfo || {}),
-                    formularioIntro: e.target.value,
-                  },
-                }))}
-              />
-            </div>
-            <div>
-              <label className="label">Pasos del formulario (uno por línea)</label>
-              <textarea
-                className="input min-h-20"
-                value={Array.isArray(config.oposicionesInfo?.formularioPasos) ? config.oposicionesInfo.formularioPasos.join('\n') : ''}
-                onChange={(e) => setConfigS((p: any) => ({
-                  ...p,
-                  oposicionesInfo: {
-                    ...(p.oposicionesInfo || {}),
-                    formularioPasos: e.target.value.split('\n').map((x) => x.trim()).filter(Boolean),
-                  },
-                }))}
-              />
-            </div>
-            <div>
-              <label className="label">Datos clave (uno por linea)</label>
-              <textarea
-                className="input min-h-24"
-                value={Array.isArray(config.oposicionesInfo?.datos) ? config.oposicionesInfo.datos.join('\n') : ''}
-                onChange={(e) => setConfigS((p: any) => ({
-                  ...p,
-                  oposicionesInfo: {
-                    ...(p.oposicionesInfo || {}),
-                    datos: e.target.value.split('\n').map((x) => x.trim()).filter(Boolean),
-                  },
-                }))}
-              />
-            </div>
-            <div>
-              <label className="label">Imagenes (URL, una por linea)</label>
-              <textarea
-                className="input min-h-24"
-                value={Array.isArray(config.oposicionesInfo?.imagenes) ? config.oposicionesInfo.imagenes.join('\n') : ''}
-                onChange={(e) => setConfigS((p: any) => ({
-                  ...p,
-                  oposicionesInfo: {
-                    ...(p.oposicionesInfo || {}),
-                    imagenes: e.target.value.split('\n').map((x) => x.trim()).filter(Boolean),
-                  },
-                }))}
-              />
-            </div>
-            <div>
-              <label className="label">Google Form ID (Oposiciones)</label>
-              <input
-                className="input"
-                value={config.oposicionesInfo?.googleFormId || ''}
-                onChange={(e) => setConfigS((p: any) => ({
-                  ...p,
-                  oposicionesInfo: {
-                    ...(p.oposicionesInfo || {}),
-                    googleFormId: e.target.value,
-                  },
-                }))}
-                placeholder="1HaC8ZxgE4dCHu57ZB9IhzGDoNsRmriDccGg3BD_kX94"
-              />
-              <p className="font-mono text-[8px] text-tx-dim mt-1">Acepta ID directo o URL completa de Google Forms.</p>
-            </div>
-            {!!config.oposicionesInfo?.googleFormId && (
-              <div className="border border-bg-border bg-bg-surface p-3">
-                <p className="font-mono text-[8px] text-tx-muted uppercase mb-2">Preview embebido</p>
-                <iframe
-                  title="Google Form Oposiciones"
-                  src={`https://docs.google.com/forms/d/e/${config.oposicionesInfo.googleFormId}/viewform?embedded=true`}
-                  className="w-full h-[360px] border border-bg-border bg-black"
-                  loading="lazy"
-                />
-                <a
-                  href={`https://docs.google.com/forms/d/e/${config.oposicionesInfo.googleFormId}/viewform`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="font-mono text-[9px] text-accent-blue hover:underline mt-2 inline-block"
-                >
-                  Abrir formulario en nueva pestaña
-                </a>
-              </div>
-            )}
-            <div className="border border-bg-border bg-bg-surface p-3">
-              <p className="font-mono text-[8px] text-tx-muted uppercase mb-1">Posteos públicos relacionados</p>
-              <p className="text-xs text-tx-secondary mb-2">Publica novedades desde Operativos/Informes usando la etiqueta <span className="font-mono">oposiciones</span> para mostrarlas en la web pública.</p>
-              <Link href="/dashboard/operativos" className="btn-ghost py-1.5 text-[9px] inline-flex">Ir a Publicaciones</Link>
-            </div>
-
-            <div className="border border-cyan-800/40 bg-cyan-900/10 p-3">
-              <p className="font-mono text-[8px] text-cyan-300 uppercase mb-2">Comunicados (parte baja de la web)</p>
-              <div className="mb-2">
-                <label className="label">Título de sección</label>
-                <input
-                  className="input"
-                  value={config.comunicadosInfo?.titulo || ''}
-                  onChange={(e) => setConfigS((p: any) => ({
-                    ...p,
-                    comunicadosInfo: {
-                      ...(p.comunicadosInfo || {}),
-                      titulo: e.target.value,
-                    },
-                  }))}
-                />
-              </div>
-              <div className="mb-2">
-                <label className="label">Descripción de sección</label>
-                <textarea
-                  className="input min-h-16"
-                  value={config.comunicadosInfo?.descripcion || ''}
-                  onChange={(e) => setConfigS((p: any) => ({
-                    ...p,
-                    comunicadosInfo: {
-                      ...(p.comunicadosInfo || {}),
-                      descripcion: e.target.value,
-                    },
-                  }))}
-                />
-              </div>
-              <div>
-                <label className="label">Items (formato por línea: estado|titulo|detalle|enlace)</label>
-                <textarea
-                  className="input min-h-28"
-                  value={Array.isArray(config.comunicadosInfo?.items)
-                    ? config.comunicadosInfo.items.map((it: any) => `${it.estado || 'activo'}|${it.titulo || ''}|${it.detalle || ''}|${it.enlace || ''}`).join('\n')
-                    : ''}
-                  onChange={(e) => setConfigS((p: any) => ({
-                    ...p,
-                    comunicadosInfo: {
-                      ...(p.comunicadosInfo || {}),
-                      items: e.target.value
-                        .split('\n')
-                        .map((line, idx) => {
-                          const [estado = 'activo', titulo = '', detalle = '', enlace = ''] = line.split('|')
-                          return {
-                            id: `com-${idx + 1}`,
-                            estado: estado.trim(),
-                            titulo: titulo.trim(),
-                            detalle: detalle.trim(),
-                            enlace: enlace.trim(),
-                            fecha: new Date().toISOString(),
-                          }
-                        })
-                        .filter((x) => x.titulo),
-                    },
-                  }))}
-                />
-              </div>
-            </div>
-            <div className="flex justify-end">
-              <button onClick={guardar} disabled={saving} className="btn-primary py-2">
-                <Save size={12} />{saving ? 'Guardando...' : 'Guardar panel indra'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

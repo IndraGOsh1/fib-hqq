@@ -121,14 +121,15 @@ const DEFAULT: ConfigVisual = {
 
 // ── Supabase persistence ──────────────────────────────────────────────────────
 import { createClient } from '@supabase/supabase-js'
+import { getSecret } from './secrets'
 
 const isSupabaseEnabled = !!(process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL)
 const ROW_KEY = 'singleton'
 
 function getSupabase() {
-  const url = (process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL)!
+  const url = (getSecret('SUPABASE_URL') || process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL)!
   const key = (
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    getSecret('SUPABASE_SERVICE_ROLE_KEY') ||
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY ||
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   )!
@@ -174,11 +175,17 @@ if (!global.__fibConfigVisualInit) {
 
 export const ConfigVisualDB = {
   get: () => global.__fibConfigVisual2 ?? { ...DEFAULT },
+  ready: async () => {
+    await global.__fibConfigVisualInit
+    return global.__fibConfigVisual2 ?? { ...DEFAULT }
+  },
   set: async (d: Partial<ConfigVisual>) => {
+    await global.__fibConfigVisualInit
     global.__fibConfigVisual2 = { ...global.__fibConfigVisual2!, ...d, actualizadoEn: new Date().toISOString() }
     if (isSupabaseEnabled) await saveToSupabase(global.__fibConfigVisual2)
   },
   reset: async () => {
+    await global.__fibConfigVisualInit
     global.__fibConfigVisual2 = { ...DEFAULT }
     if (isSupabaseEnabled) await saveToSupabase(global.__fibConfigVisual2)
   },

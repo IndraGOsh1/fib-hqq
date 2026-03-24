@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getUser, forbidden } from '@/lib/auth'
 import { ConfigVisualDB } from '@/lib/config-visual-db'
+import { sanitizeGoogleFormRef } from '@/lib/google-forms'
 
 function sanitizeOposicionesInfo(raw: any) {
   const source = raw && typeof raw === 'object' ? raw : {}
-  const rawGoogle = String(source.googleFormId || '').trim()
-  const extractedFromUrl = rawGoogle.match(/\/d\/e\/([a-zA-Z0-9_-]+)/)?.[1] || ''
-  const normalizedGoogleFormId = (extractedFromUrl || rawGoogle).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 200)
   const datos = Array.isArray(source.datos)
     ? source.datos.map((x: any) => String(x || '').trim().slice(0, 240)).filter(Boolean).slice(0, 12)
     : []
@@ -19,7 +17,7 @@ function sanitizeOposicionesInfo(raw: any) {
     descripcion: String(source.descripcion || '').trim().slice(0, 3000),
     datos,
     imagenes,
-    googleFormId: normalizedGoogleFormId,
+    googleFormId: sanitizeGoogleFormRef(source.googleFormId),
     formularioIntro: String(source.formularioIntro || '').trim().slice(0, 1200),
     formularioPasos: Array.isArray(source.formularioPasos)
       ? source.formularioPasos.map((x: any) => String(x || '').trim().slice(0, 180)).filter(Boolean).slice(0, 8)
@@ -76,6 +74,7 @@ function sanitizeWebsiteSettings(raw: any) {
 }
 
 export async function GET() {
+  await ConfigVisualDB.ready()
   return NextResponse.json(ConfigVisualDB.get())
 }
 
@@ -85,14 +84,6 @@ export async function PATCH(req: NextRequest) {
   const body = await req.json().catch(() => ({}))
 
   const next: Record<string, unknown> = { ...body }
-  const isIndra = String(u.username || '').toLowerCase() === 'indra'
-
-  if (!isIndra) {
-    delete next.textoMision
-    delete next.descripcionDivision
-    delete next.oposicionesInfo
-    delete next.comunicadosInfo
-  }
 
   if (next.oposicionesInfo !== undefined) {
     next.oposicionesInfo = sanitizeOposicionesInfo(next.oposicionesInfo)

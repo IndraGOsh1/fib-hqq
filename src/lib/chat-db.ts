@@ -14,15 +14,17 @@ export interface Canal {
   id:            string
   nombre:        string
   descripcion:   string
-  tipo:          'general' | 'unidad' | 'dm' | 'comando' | 'supervisory'
+  tipo:          'general' | 'unidad' | 'dm' | 'comando' | 'supervisory' | 'private'
   unidad?:       string
   participantes?: string[]
   acceso:        string[]
   creadoEn:      string
   icono?:        string
+  creadoPor?:    string
 }
 import { SupabaseMap } from './supabase-map'
 import { createClient } from '@supabase/supabase-js'
+import { getSecret } from './secrets'
 
 declare global {
   // eslint-disable-next-line no-var
@@ -46,15 +48,15 @@ const DEFAULT_CANALES = (): Canal[] => {
   ]
 }
 
-const isSupabaseEnabled = !!(process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL)
+const isSupabaseEnabled = !!(getSecret('SUPABASE_URL') || process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL)
 
 let _supabase: ReturnType<typeof createClient> | null = null
 function getSupabase() {
   if (_supabase) return _supabase
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || ''
+  const url = getSecret('SUPABASE_URL') || process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || ''
   const key =
+    getSecret('SUPABASE_SERVICE_ROLE_KEY') ||
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY ||
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
     ''
   if (!url || !key) return null
@@ -147,9 +149,17 @@ export const ChatDB = new Proxy({} as typeof global.__fibChatV2 & {}, {
 }) as { canales: Map<string, Canal>; mensajes: Map<string, Mensaje[]> }
 
 export function canAccess(canal: Canal, rol: string, username: string): boolean {
-  if (canal.tipo === 'dm') return canal.participantes?.includes(username) || false
+  if (canal.tipo === 'dm' || canal.tipo === 'private') return canal.participantes?.includes(username) || false
   if (canal.acceso.includes('*')) return true
   return canal.acceso.includes(rol)
+}
+
+async function persistCanal(canal: Canal) {
+  if (!isSupabaseEnabled) return
+  const supabase = getSupabase()
+  if (!supabase) return
+  const { error } = await supabase.from('chat_canales').upsert(canal as any)
+  if (error) throw new Error(`[chat] No se pudo persistir canal: ${error.message}`)
 }
 
 export async function getMessages(canalId: string, limit = 100): Promise<Mensaje[]> {
@@ -291,21 +301,57 @@ export async function getUnreadCount(canalId: string, username: string): Promise
   return count || 0
 }
 
-export function getOrCreateDM(u1: string, u2: string): Canal {
+export async function getOrCreateDM(u1: string, u2: string): Promise<Canal> {
   const id = 'dm-' + [u1,u2].sort().join('__')
   if (!ChatDB.canales.has(id)) {
-    const c: Canal = { id, nombre:id, descripcion:'DM', tipo:'dm', acceso:[u1,u2], participantes:[u1,u2], creadoEn:new Date().toISOString() }
+    const c: Canal = { id, nombre:id, descripcion:'DM', tipo:'dm', acceso:[u1,u2], participantes:[u1,u2], creadoEn:new Date().toISOString(), creadoPor:u1 }
     ChatDB.canales.set(id, c)
     ChatDB.mensajes.set(id, [])
+    await persistCanal(c)
   }
   return ChatDB.canales.get(id)!
+}
+
+export async function createPrivateChannel(input: {
+  nombre: string
+  descripcion?: string
+  creadoPor: string
+  participantes: string[]
+}) {
+  const id = `priv-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
+  const canal: Canal = {
+    id,
+    nombre: input.nombre.trim().slice(0, 80),
+    descripcion: String(input.descripcion || '').trim().slice(0, 240),
+    tipo: 'private',
+    acceso: [],
+    participantes: Array.from(new Set(input.participantes.map((entry) => String(entry || '').trim()).filter(Boolean))),
+    creadoEn: new Date().toISOString(),
+    icono: '🔒',
+    creadoPor: input.creadoPor,
+  }
+  const systemMessage: Mensaje = {
+    id: `sys-${canal.id}`,
+    canal: canal.id,
+    autor: 'SYSTEM',
+    nombre: 'Sistema FIB',
+    contenido: `Canal privado creado por ${input.creadoPor}. Participantes: ${(canal.participantes || []).join(', ')}`,
+    fecha: canal.creadoEn,
+    tipo: 'sistema',
+    leido: [],
+  }
+  ChatDB.canales.set(canal.id, canal)
+  ChatDB.mensajes.set(canal.id, [])
+  await persistCanal(canal)
+  await appendMessage(canal.id, systemMessage)
+  return canal
 }
 
 export async function countUnreadDMs(username: string): Promise<number> {
   const chat = await getChatDB()
   let n = 0
   for (const [id, canal] of chat.canales) {
-    if (canal.tipo !== 'dm' || !canal.participantes?.includes(username)) continue
+    if (!['dm', 'private'].includes(canal.tipo) || !canal.participantes?.includes(username)) continue
     n += await getUnreadCount(id, username)
   }
   return n
