@@ -1,32 +1,49 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { v4 as uuid } from 'uuid'
 import { getUser, unauthorized, forbidden, notFound } from '@/lib/auth'
-import { ChatDB, type Mensaje } from '@/lib/chat-db'
+import { ChatDB, canAccess, markRead, type Mensaje } from '@/lib/chat-db'
+import { DB } from '@/lib/db'
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ canal: string }> }) {
+type P = { params: Promise<{ canal:string }> }
+
+export async function GET(req: NextRequest, { params }:P) {
   const u = getUser(req); if (!u) return unauthorized()
-  const { canal: canalId } = await params
+  const { canal:canalId } = await params
   const canal = ChatDB.canales.get(canalId); if (!canal) return notFound()
-  if (canal.id === 'comando' && u.rol !== 'command_staff') return forbidden()
-  if (canal.tipo === 'dm' && !canal.participantes?.includes(u.username)) return forbidden()
-  const msgs = ChatDB.mensajes.get(canalId) || []
-  return NextResponse.json(msgs.slice(-100))
+  if (!canAccess(canal, u.rol, u.username)) return forbidden()
+  markRead(canalId, u.username)
+  const msgs = (ChatDB.mensajes.get(canalId)||[]).slice(-100)
+  return NextResponse.json(msgs)
 }
 
-export async function POST(req: NextRequest, { params }: { params: Promise<{ canal: string }> }) {
+export async function POST(req: NextRequest, { params }:P) {
   const u = getUser(req); if (!u) return unauthorized()
-  const { canal: canalId } = await params
+  const { canal:canalId } = await params
   const canal = ChatDB.canales.get(canalId); if (!canal) return notFound()
-  if (canal.id === 'comando' && u.rol !== 'command_staff') return forbidden()
-  if (canal.tipo === 'dm' && !canal.participantes?.includes(u.username)) return forbidden()
+  if (!canAccess(canal, u.rol, u.username)) return forbidden()
   const { contenido } = await req.json().catch(()=>({}))
-  if (!contenido?.trim()) return NextResponse.json({ error:'Mensaje vacío' }, { status:400 })
+  if (!contenido?.trim()) return NextResponse.json({ error:'Vacío' }, { status:400 })
+
+  // Get callsign from user profile
+  const userProfile = Array.from(DB.users.values()).find(us => us.username === u.username)
+  const callsign = userProfile?.callsign || null
+
+  const isImg = /^https?:\/\/.+\.(jpg|jpeg|png|gif|webp|svg)(\?.*)?$/i.test(contenido.trim())
   const msg: Mensaje = {
-    id: uuid().slice(0,12), canal: canalId,
-    autor: u.username, nombre: u.nombre || u.username,
-    contenido: contenido.trim(), fecha: new Date().toISOString(), tipo: 'texto',
+    id:       uuid().slice(0,12),
+    canal:    canalId,
+    autor:    u.username,
+    nombre:   u.nombre || u.username,
+    callsign: callsign || undefined,
+    contenido:contenido.trim(),
+    fecha:    new Date().toISOString(),
+    tipo:     isImg ? 'imagen' : 'texto',
+    leido:    [u.username],
   }
   if (!ChatDB.mensajes.has(canalId)) ChatDB.mensajes.set(canalId, [])
   ChatDB.mensajes.get(canalId)!.push(msg)
+  // Keep max 500 messages per channel
+  const msgs = ChatDB.mensajes.get(canalId)!
+  if (msgs.length > 500) msgs.splice(0, msgs.length - 500)
   return NextResponse.json(msg, { status:201 })
 }

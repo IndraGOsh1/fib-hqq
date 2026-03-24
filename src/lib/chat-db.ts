@@ -1,60 +1,86 @@
 export interface Mensaje {
-  id:       string
-  canal:    string
-  autor:    string
-  nombre:   string
-  contenido:string
-  imageUrl?: string
-  fecha:    string
-  tipo:     'texto' | 'sistema' | 'imagen'
+  id:        string
+  canal:     string
+  autor:     string
+  nombre:    string
+  callsign?: string
+  contenido: string
+  fecha:     string
+  tipo:      'texto' | 'sistema' | 'imagen'
+  leido:     string[]
 }
 
 export interface Canal {
-  id:          string
-  nombre:      string
-  descripcion: string
-  tipo:        'unidad' | 'dm' | 'general'
-  unidad?:     string
-  participantes?: string[]  // para DMs
-  creadoEn:    string
+  id:            string
+  nombre:        string
+  descripcion:   string
+  tipo:          'general' | 'unidad' | 'dm' | 'comando' | 'supervisory'
+  unidad?:       string
+  participantes?: string[]
+  acceso:        string[]
+  creadoEn:      string
+  icono?:        string
 }
 
 declare global {
-  var __fibChat: {
+  // eslint-disable-next-line no-var
+  var __fibChatV2: {
     canales:  Map<string, Canal>
     mensajes: Map<string, Mensaje[]>
   } | undefined
 }
 
-if (!global.__fibChat) {
+if (!global.__fibChatV2) {
   const now = new Date().toISOString()
-  global.__fibChat = { canales: new Map(), mensajes: new Map() }
-
-  const canalesDefault: Canal[] = [
-    { id:'general',   nombre:'general',   descripcion:'Canal principal de la división',       tipo:'general', creadoEn:now },
-    { id:'comando',   nombre:'comando',   descripcion:'Canal exclusivo Command Staff',          tipo:'unidad', unidad:'Command Staff', creadoEn:now },
-    { id:'ert',       nombre:'ert',       descripcion:'Canal de la unidad ERT',                tipo:'unidad', unidad:'ERT', creadoEn:now },
-    { id:'cirg',      nombre:'cirg',      descripcion:'Canal de la unidad CIRG',               tipo:'unidad', unidad:'CIRG', creadoEn:now },
-    { id:'rrhh',      nombre:'rrhh',      descripcion:'Canal de RRHH',                         tipo:'unidad', unidad:'RRHH', creadoEn:now },
-    { id:'operaciones',nombre:'operaciones',descripcion:'Coordinación de operativos activos',  tipo:'general', creadoEn:now },
+  global.__fibChatV2 = { canales: new Map(), mensajes: new Map() }
+  const defaults: Canal[] = [
+    { id:'general',     nombre:'general',      descripcion:'Canal principal',                   tipo:'general',     acceso:['*'],                                        creadoEn:now },
+    { id:'operaciones', nombre:'operaciones',   descripcion:'Coordinación operativa',            tipo:'general',     acceso:['command_staff','supervisory','federal_agent'],creadoEn:now },
+    { id:'ert',         nombre:'ert',           descripcion:'Canal ERT',                         tipo:'unidad',      acceso:['*'],         icono:'🔫',                   creadoEn:now },
+    { id:'cirg',        nombre:'cirg',          descripcion:'Canal CIRG',                        tipo:'unidad',      acceso:['*'],         icono:'🛡️',                   creadoEn:now },
+    { id:'rrhh',        nombre:'rrhh',          descripcion:'Canal RRHH',                        tipo:'unidad',      acceso:['*'],         icono:'👥',                   creadoEn:now },
+    { id:'supervisory', nombre:'supervisory',   descripcion:'Command Staff y Supervisory',       tipo:'supervisory', acceso:['command_staff','supervisory'],               creadoEn:now, icono:'⭐' },
+    { id:'command',     nombre:'command-staff', descripcion:'Solo Command Staff',                tipo:'comando',     acceso:['command_staff'],                            creadoEn:now, icono:'👑' },
   ]
-
-  canalesDefault.forEach(c => {
-    global.__fibChat!.canales.set(c.id, c)
-    global.__fibChat!.mensajes.set(c.id, [])
-  })
-
-  // Seed messages
-  const seed = [
-    { canal:'general',    autor:'SYSTEM', nombre:'Sistema', contenido:'Bienvenidos al sistema de comunicaciones FIB HQ.', tipo:'sistema' as const },
-    { canal:'ert',        autor:'SYSTEM', nombre:'Sistema', contenido:'Canal ERT inicializado.', tipo:'sistema' as const },
-    { canal:'operaciones',autor:'SYSTEM', nombre:'Sistema', contenido:'Canal de operaciones listo.', tipo:'sistema' as const },
-  ]
-  seed.forEach(m => {
-    const msg: Mensaje = { id:`msg-${Date.now()}-${Math.random().toString(36).slice(2,6)}`, fecha:now, ...m }
-    global.__fibChat!.mensajes.get(m.canal)!.push(msg)
+  defaults.forEach(c => {
+    global.__fibChatV2!.canales.set(c.id, c)
+    global.__fibChatV2!.mensajes.set(c.id, [{
+      id:`sys-${c.id}`, canal:c.id, autor:'SYSTEM', nombre:'Sistema FIB',
+      contenido: c.tipo==='comando' ? 'Canal confidencial — solo Command Staff.' :
+                 c.tipo==='supervisory' ? 'Canal restringido — Command Staff y Supervisory.' :
+                 `Bienvenidos a #${c.nombre}.`,
+      fecha:now, tipo:'sistema', leido:[]
+    }])
   })
 }
 
-export const ChatDB = global.__fibChat!
+export const ChatDB = global.__fibChatV2!
 
+export function canAccess(canal: Canal, rol: string, username: string): boolean {
+  if (canal.tipo === 'dm') return canal.participantes?.includes(username) || false
+  if (canal.acceso.includes('*')) return true
+  return canal.acceso.includes(rol)
+}
+
+export function getOrCreateDM(u1: string, u2: string): Canal {
+  const id = 'dm-' + [u1,u2].sort().join('__')
+  if (!ChatDB.canales.has(id)) {
+    const c: Canal = { id, nombre:id, descripcion:`DM`, tipo:'dm', acceso:[u1,u2], participantes:[u1,u2], creadoEn:new Date().toISOString() }
+    ChatDB.canales.set(id, c)
+    ChatDB.mensajes.set(id, [])
+  }
+  return ChatDB.canales.get(id)!
+}
+
+export function countUnreadDMs(username: string): number {
+  let n = 0
+  for (const [id, canal] of ChatDB.canales) {
+    if (canal.tipo !== 'dm' || !canal.participantes?.includes(username)) continue
+    n += (ChatDB.mensajes.get(id)||[]).filter(m => m.autor!==username && !m.leido.includes(username)).length
+  }
+  return n
+}
+
+export function markRead(canalId: string, username: string) {
+  ;(ChatDB.mensajes.get(canalId)||[]).forEach(m => { if (!m.leido.includes(username)) m.leido.push(username) })
+}
