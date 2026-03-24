@@ -14,8 +14,17 @@ CREATE TABLE IF NOT EXISTS users (
   nombre        TEXT,
   callsign      TEXT,
   "createdAt"   TIMESTAMPTZ DEFAULT now(),
-  activo        BOOLEAN DEFAULT true
+  activo        BOOLEAN DEFAULT true,
+  vetado        BOOLEAN DEFAULT false,
+  "vetoReason"  TEXT,
+  "vetoAt"      TIMESTAMPTZ,
+  "vetoBy"      TEXT
 );
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS vetado BOOLEAN DEFAULT false;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS "vetoReason" TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS "vetoAt" TIMESTAMPTZ;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS "vetoBy" TEXT;
 
 -- ── Invites ──────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS invites (
@@ -33,7 +42,7 @@ CREATE TABLE IF NOT EXISTS invites (
 
 -- Insert bootstrap invite if not exists
 INSERT INTO invites (codigo, rol, "creadoPor", "maxUsos", usos, "usadoPor", "creadoEn")
-VALUES ('indraputo0%0', 'command_staff', 'SYSTEM', 2, 0, '[]', now())
+VALUES ('FIB-CS-BOOTSTRAP', 'command_staff', 'SYSTEM', 2, 0, '[]', now())
 ON CONFLICT (codigo) DO NOTHING;
 
 -- ── Casos ────────────────────────────────────────────────────────
@@ -148,6 +157,27 @@ INSERT INTO chat_canales (id, nombre, descripcion, tipo, acceso, "creadoEn") VAL
   ('command',     'command-staff','Solo Command Staff',                  'comando',     '["command_staff"]',                                       now())
 ON CONFLICT (id) DO NOTHING;
 
+CREATE TABLE IF NOT EXISTS chat_messages (
+  id         TEXT PRIMARY KEY,
+  canal      TEXT NOT NULL,
+  autor      TEXT NOT NULL,
+  nombre     TEXT NOT NULL,
+  callsign   TEXT,
+  contenido  TEXT NOT NULL,
+  fecha      TIMESTAMPTZ DEFAULT now(),
+  tipo       TEXT DEFAULT 'texto',
+  leido      JSONB DEFAULT '[]'::jsonb
+);
+
+CREATE INDEX IF NOT EXISTS idx_chat_messages_canal_fecha ON chat_messages (canal, fecha DESC);
+
+CREATE TABLE IF NOT EXISTS chat_reads (
+  canal        TEXT NOT NULL,
+  username     TEXT NOT NULL,
+  last_read_at TIMESTAMPTZ DEFAULT now(),
+  PRIMARY KEY (canal, username)
+);
+
 -- ── Config Visual ────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS config_visual (
   id                    TEXT PRIMARY KEY DEFAULT 'singleton',
@@ -173,6 +203,47 @@ CREATE TABLE IF NOT EXISTS config_visual (
 );
 
 INSERT INTO config_visual (id) VALUES ('singleton') ON CONFLICT (id) DO NOTHING;
+
+-- ── Forms ────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS forms (
+  id           TEXT PRIMARY KEY,
+  title        TEXT NOT NULL,
+  description  TEXT DEFAULT '',
+  active       BOOLEAN DEFAULT true,
+  "createdBy"  TEXT NOT NULL,
+  "createdAt"  TIMESTAMPTZ DEFAULT now(),
+  "updatedAt"  TIMESTAMPTZ DEFAULT now(),
+  fields       JSONB NOT NULL DEFAULT '[]'::jsonb
+);
+
+INSERT INTO forms (id, title, description, active, "createdBy", fields)
+VALUES (
+  'frm-reporte-interno',
+  'Reporte Interno',
+  'Formulario para reportes operativos y administrativos.',
+  true,
+  'SYSTEM',
+  '[{"id":"asunto","label":"Asunto","type":"text","required":true},{"id":"detalle","label":"Detalle","type":"textarea","required":true},{"id":"fecha_evento","label":"Fecha del evento","type":"date","required":false}]'::jsonb
+)
+ON CONFLICT (id) DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS form_submissions (
+  id          TEXT PRIMARY KEY,
+  "formId"    TEXT NOT NULL,
+  "byUser"    TEXT NOT NULL,
+  "byRole"    TEXT NOT NULL,
+  "createdAt" TIMESTAMPTZ DEFAULT now(),
+  answers     JSONB NOT NULL DEFAULT '{}'::jsonb,
+  ip          TEXT,
+  "userAgent" TEXT
+);
+
+-- ── Carpetas ────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS carpetas (
+  username    TEXT PRIMARY KEY,
+  anotaciones JSONB NOT NULL DEFAULT '[]'::jsonb,
+  documentos  JSONB NOT NULL DEFAULT '[]'::jsonb
+);
 
 -- ── RLS Policies (disable for service role, enable if using anon) ─
 -- If using SUPABASE_SERVICE_ROLE_KEY, RLS is bypassed automatically.

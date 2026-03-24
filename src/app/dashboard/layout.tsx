@@ -34,6 +34,22 @@ const NAV_GROUPS = [
   ]},
 ]
 
+function canSeeNavItem(rol: string, href: string) {
+  if (rol === 'command_staff') return true
+  if (rol === 'supervisory') {
+    if (href === '/dashboard/config') return false
+    return true
+  }
+  if (rol === 'federal_agent') {
+    if (href === '/dashboard/admin' || href === '/dashboard/config') return false
+    return true
+  }
+  if (rol === 'visitante') {
+    return href === '/dashboard' || href === '/dashboard/chat'
+  }
+  return false
+}
+
 const ROL_COLOR: Record<string,string> = {
   command_staff: 'text-red-400',
   supervisory:   'text-blue-400',
@@ -146,10 +162,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto py-2">
-          {NAV_GROUPS.map(group => (
+          {NAV_GROUPS.map(group => {
+            const visibleItems = group.items.filter(item => canSeeNavItem(user?.rol, item.href))
+            if (visibleItems.length === 0) return null
+            return (
             <div key={group.label} className="mb-1">
               <p className="px-4 py-1.5 font-mono text-[7px] tracking-widest uppercase opacity-30" style={{color:theme.sidebarTextColor}}>{group.label}</p>
-              {group.items.map(item => {
+              {visibleItems.map(item => {
                 const active = pathname===item.href||(item.href!=='/dashboard'&&pathname.startsWith(item.href))
                 return (
                   <Link key={item.href} href={item.href} onClick={()=>setOpen(false)}>
@@ -162,7 +181,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 )
               })}
             </div>
-          ))}
+          )})}
         </nav>
 
         {/* Logout */}

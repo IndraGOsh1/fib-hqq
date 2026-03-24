@@ -336,6 +336,13 @@ export default function PersonalPage() {
 
   useEffect(() => { load() }, [load])
 
+  useEffect(() => {
+    const interval = setInterval(() => {
+      load()
+    }, 35_000)
+    return () => clearInterval(interval)
+  }, [load])
+
   async function openFicha(a: any) {
     try {
       const { getAgente } = await import('@/lib/client')

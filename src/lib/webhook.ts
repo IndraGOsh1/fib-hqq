@@ -1,10 +1,12 @@
 // Discord Webhook Logger
 // Sends structured embeds to different webhook channels
+import { getSecret } from './secrets'
 
 const WEBHOOKS = {
-  extras:  process.env.DISCORD_WEBHOOK_EXTRAS  || '',
-  keys:    process.env.DISCORD_WEBHOOK_KEYS    || '',
-  logins:  process.env.DISCORD_WEBHOOK_LOGINS  || '',
+  extras:    getSecret('DISCORD_WEBHOOK_EXTRAS'),
+  keys:      getSecret('DISCORD_WEBHOOK_KEYS'),
+  logins:    getSecret('DISCORD_WEBHOOK_LOGINS'),
+  important: getSecret('DISCORD_WEBHOOK_IMPORTANTE') || getSecret('DISCORD_WEBHOOK_IMPORTANT'),
 }
 
 type WebhookType = keyof typeof WEBHOOKS
@@ -18,6 +20,7 @@ const COLORS = {
   gray:   0x95A5A6,
   purple: 0x9B59B6,
   orange: 0xE67E22,
+  cyan:   0x1ABC9C,
 }
 
 interface EmbedField { name: string; value: string; inline?: boolean }
@@ -31,9 +34,21 @@ interface WebhookPayload {
   footer?: string
 }
 
+declare global {
+  // eslint-disable-next-line no-var
+  var __fibWebhookMissingWarned: Record<string, boolean> | undefined
+}
+
 export async function logWebhook(payload: WebhookPayload) {
+  if (!global.__fibWebhookMissingWarned) global.__fibWebhookMissingWarned = {}
   const url = WEBHOOKS[payload.type]
-  if (!url) return
+  if (!url) {
+    if (!global.__fibWebhookMissingWarned[payload.type]) {
+      console.warn(`[webhook] Missing env for channel: ${payload.type}`)
+      global.__fibWebhookMissingWarned[payload.type] = true
+    }
+    return
+  }
 
   const embed = {
     title:       payload.title,
@@ -106,7 +121,7 @@ export const logPersonalAction = (action: string, agente: string, by: string, de
 
 export const logSancion = (agente: string, tipo: string, motivo: string, by: string) =>
   logWebhook({
-    type:  'extras',
+    type:  'important',
     title: `⚠️ Sanción ${tipo}`,
     color: tipo === 'Grave' ? COLORS.red : COLORS.orange,
     fields: [
@@ -114,6 +129,19 @@ export const logSancion = (agente: string, tipo: string, motivo: string, by: str
       { name: 'Tipo',   value: tipo,   inline: true },
       { name: 'Por',    value: by,     inline: true },
       { name: 'Motivo', value: motivo, inline: false },
+    ],
+  })
+
+export const logRegistroImportante = (accion: 'Ascenso' | 'Descenso' | 'Sanción' | 'Veto', agente: string, by: string, detalle: string) =>
+  logWebhook({
+    type: 'important',
+    title: `📌 Registro Importante: ${accion}`,
+    color: accion === 'Ascenso' ? COLORS.green : accion === 'Descenso' ? COLORS.yellow : accion === 'Veto' ? COLORS.red : COLORS.orange,
+    fields: [
+      { name: 'Agente', value: agente, inline: true },
+      { name: 'Por', value: by, inline: true },
+      { name: 'Acción', value: accion, inline: true },
+      { name: 'Detalle', value: detalle || '—', inline: false },
     ],
   })
 

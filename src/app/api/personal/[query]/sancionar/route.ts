@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getUser, unauthorized, forbidden, notFound, err } from '@/lib/auth'
 import { getRows, setCell, addRow, findAgent, today, COL } from '@/lib/sheets'
 import { CONFIG } from '@/lib/config'
-import { logSancion } from '@/lib/webhook'
+import { logRegistroImportante, logSancion } from '@/lib/webhook'
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{query:string}> }) {
   const u = getUser(req); if (!u) return unauthorized()
@@ -38,5 +38,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{quer
     escalado.push('⚠️ EXPULSIÓN AUTOMÁTICA')
   }
   logSancion(row[COL.NOMBRE], tipo, motivo, u.username)
+  logRegistroImportante('Sanción', row[COL.NOMBRE], u.username, `${tipo}: ${motivo}`)
   return NextResponse.json({ mensaje:'✅ Sanción aplicada', expulsado, escalado, contadores:{leves,mods,graves} })
 }

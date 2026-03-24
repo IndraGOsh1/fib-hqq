@@ -19,6 +19,14 @@ const auth = getAuth()
 const api  = google.sheets({ version: 'v4', auth })
 const SSID = process.env.SPREADSHEET_ID!
 
+function sanitizeSheetValue(val: string | number): string | number {
+  if (typeof val !== 'string') return val
+  const trimmed = val.trimStart()
+  // Prevent formula injection in USER_ENTERED mode.
+  if (/^[=+\-@]/.test(trimmed)) return `'${val}`
+  return val
+}
+
 export const COL = {
   NOMBRE:0, APODO:1, DISCORD_ID:2, FECHA_INGRESO:3,
   ESTADO:4, SECCION:5, RANGO:6, NUMERO:7,
@@ -34,14 +42,14 @@ export async function getRows(sheet: string): Promise<string[][]> {
 export async function setCell(sheet: string, row: number, col: number, val: string|number) {
   await api.spreadsheets.values.update({
     spreadsheetId:SSID, range:`${sheet}!${String.fromCharCode(65+col)}${row+1}`,
-    valueInputOption:'USER_ENTERED', requestBody:{ values:[[val]] },
+    valueInputOption:'USER_ENTERED', requestBody:{ values:[[sanitizeSheetValue(val)]] },
   })
 }
 
 export async function addRow(sheet: string, data: (string|number)[]) {
   await api.spreadsheets.values.append({
     spreadsheetId:SSID, range:`${sheet}!A:P`,
-    valueInputOption:'USER_ENTERED', requestBody:{ values:[data] },
+    valueInputOption:'USER_ENTERED', requestBody:{ values:[data.map(sanitizeSheetValue)] },
   })
 }
 

@@ -1,15 +1,26 @@
 import { createClient } from '@supabase/supabase-js'
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseKey = (
-  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY ||
-  process.env.SUPABASE_SERVICE_ROLE_KEY ||
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-)!
+import { getSecret } from './secrets'
 
 let _client: ReturnType<typeof createClient> | null = null
+
+function getSupabaseConfig() {
+  const url =
+    getSecret('SUPABASE_URL') ||
+    process.env.NEXT_PUBLIC_SUPABASE_URL ||
+    ''
+  const key =
+    getSecret('SUPABASE_SERVICE_ROLE_KEY') ||
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    ''
+  return { url, key }
+}
+
 function getClient() {
-  if (!_client) _client = createClient(supabaseUrl, supabaseKey)
+  if (_client) return _client
+  const { url, key } = getSupabaseConfig()
+  if (!url || !key) return null
+  _client = createClient(url, key)
   return _client
 }
 
@@ -29,13 +40,18 @@ export class SupabaseMap<K extends string, V extends Record<string, any>> {
     pkField: K,
     initialData: V[] = [],
   ): Promise<Map<string, V>> {
+    const fallback = new Map<string, V>()
+    initialData.forEach(item => fallback.set(String(item[pkField]), item))
+
     const client = getClient()
+    if (!client) {
+      console.warn(`[SupabaseMap] Missing Supabase config. Using in-memory fallback for ${table}.`)
+      return fallback
+    }
 
     const { data, error } = await client.from(table).select('*')
     if (error) {
       console.error(`[SupabaseMap] Error loading ${table}:`, error.message)
-      const fallback = new Map<string, V>()
-      initialData.forEach(item => fallback.set(String(item[pkField]), item))
       return fallback
     }
 
@@ -65,7 +81,9 @@ export class SupabaseMap<K extends string, V extends Record<string, any>> {
 
   set(key: string, value: V): this {
     this.cache.set(key, value)
-    ;(getClient().from(this.table) as any).upsert(value as any).then(({ error }: any) => {
+    const client = getClient()
+    if (!client) return this
+    ;(client.from(this.table) as any).upsert(value as any).then(({ error }: any) => {
       if (error) console.error(`[SupabaseMap] upsert error on ${this.table}:`, error.message)
     })
     return this
@@ -74,7 +92,9 @@ export class SupabaseMap<K extends string, V extends Record<string, any>> {
   delete(key: string): boolean {
     const existed = this.cache.delete(key)
     if (existed) {
-      ;(getClient().from(this.table) as any).delete().eq(this.pkField, key).then(({ error }: any) => {
+      const client = getClient()
+      if (!client) return existed
+      ;(client.from(this.table) as any).delete().eq(this.pkField, key).then(({ error }: any) => {
         if (error) console.error(`[SupabaseMap] delete error on ${this.table}:`, error.message)
       })
     }
@@ -83,7 +103,9 @@ export class SupabaseMap<K extends string, V extends Record<string, any>> {
 
   clear(): void {
     this.cache.clear()
-    ;(getClient().from(this.table) as any).delete().neq(this.pkField, '').then(({ error }: any) => {
+    const client = getClient()
+    if (!client) return
+    ;(client.from(this.table) as any).delete().neq(this.pkField, '').then(({ error }: any) => {
       if (error) console.error(`[SupabaseMap] clear error on ${this.table}:`, error.message)
     })
   }

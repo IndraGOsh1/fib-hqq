@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getUser, unauthorized, forbidden, notFound } from '@/lib/auth'
 import { getRows, setCell, addRow, findAgent, toAgent, today, COL } from '@/lib/sheets'
-import { CONFIG, seccionDeRango } from '@/lib/config'
+import { CONFIG, seccionDeRango, todosLosRangos } from '@/lib/config'
+import { logRegistroImportante } from '@/lib/webhook'
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ query: string }> }) {
   const u = getUser(req); if (!u) return unauthorized()
@@ -30,10 +31,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ qu
   const did    = rows[idx][COL.DISCORD_ID]
   const changes: string[] = []
   if (body.rango !== undefined) {
+    const oldRango = rows[idx][COL.RANGO]
     const sec = seccionDeRango(body.rango)
     await setCell(CONFIG.sheets.personal, idx, COL.RANGO,   body.rango)
     await setCell(CONFIG.sheets.personal, idx, COL.SECCION, sec)
-    await addRow(CONFIG.sheets.historial, [today(), nombre, 'Cambio de Rango', `${rows[idx][COL.RANGO]} → ${body.rango}`, u.username, did])
+    await addRow(CONFIG.sheets.historial, [today(), nombre, 'Cambio de Rango', `${oldRango} → ${body.rango}`, u.username, did])
+    const orden = todosLosRangos()
+    const oldIdx = orden.indexOf(oldRango)
+    const newIdx = orden.indexOf(body.rango)
+    if (oldIdx !== -1 && newIdx !== -1 && oldIdx !== newIdx) {
+      const accion = newIdx < oldIdx ? 'Ascenso' : 'Descenso'
+      logRegistroImportante(accion, nombre, u.username, `${oldRango} → ${body.rango}`)
+    }
     changes.push(`Rango: ${body.rango}`)
   }
   if (body.estado !== undefined) {

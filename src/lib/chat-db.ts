@@ -21,13 +21,8 @@ export interface Canal {
   creadoEn:      string
   icono?:        string
 }
-
-// Chat messages are stored as a flat table with canalId
-export interface MensajeRow extends Mensaje {
-  canalId: string
-}
-
 import { SupabaseMap } from './supabase-map'
+import { createClient } from '@supabase/supabase-js'
 
 declare global {
   // eslint-disable-next-line no-var
@@ -52,6 +47,52 @@ const DEFAULT_CANALES = (): Canal[] => {
 }
 
 const isSupabaseEnabled = !!(process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL)
+
+let _supabase: ReturnType<typeof createClient> | null = null
+function getSupabase() {
+  if (_supabase) return _supabase
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || ''
+  const key =
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY ||
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    ''
+  if (!url || !key) return null
+  _supabase = createClient(url, key)
+  return _supabase
+}
+
+type ChatRead = {
+  canal: string
+  username: string
+  last_read_at: string
+}
+
+type ChatMessageRow = {
+  id: string
+  canal: string
+  autor: string
+  nombre: string
+  callsign?: string | null
+  contenido: string
+  fecha: string
+  tipo: 'texto' | 'sistema' | 'imagen'
+  leido?: string[] | null
+}
+
+function toMensaje(row: ChatMessageRow): Mensaje {
+  return {
+    id: row.id,
+    canal: row.canal,
+    autor: row.autor,
+    nombre: row.nombre,
+    callsign: row.callsign || undefined,
+    contenido: row.contenido,
+    fecha: row.fecha,
+    tipo: row.tipo,
+    leido: Array.isArray(row.leido) ? row.leido : [],
+  }
+}
 
 async function initChatDB() {
   const now = new Date().toISOString()
@@ -111,6 +152,145 @@ export function canAccess(canal: Canal, rol: string, username: string): boolean 
   return canal.acceso.includes(rol)
 }
 
+export async function getMessages(canalId: string, limit = 100): Promise<Mensaje[]> {
+  const chat = await getChatDB()
+
+  if (!isSupabaseEnabled) {
+    return (chat.mensajes.get(canalId) || []).slice(-limit)
+  }
+
+  const supabase = getSupabase()
+  if (!supabase) return (chat.mensajes.get(canalId) || []).slice(-limit)
+
+  const { data, error } = await supabase
+    .from('chat_messages')
+    .select('*')
+    .eq('canal', canalId)
+    .order('fecha', { ascending: false })
+    .limit(limit)
+
+  if (error) {
+    console.error('[ChatDB] Error loading messages:', error.message)
+    return (chat.mensajes.get(canalId) || []).slice(-limit)
+  }
+
+  const msgs = ((data as ChatMessageRow[]) || []).map(toMensaje).reverse()
+  chat.mensajes.set(canalId, msgs)
+  return msgs
+}
+
+export async function appendMessage(canalId: string, msg: Mensaje) {
+  const chat = await getChatDB()
+  if (!chat.mensajes.has(canalId)) chat.mensajes.set(canalId, [])
+
+  const current = chat.mensajes.get(canalId) || []
+  current.push(msg)
+  if (current.length > 500) current.splice(0, current.length - 500)
+  chat.mensajes.set(canalId, current)
+
+  if (!isSupabaseEnabled) return
+  const supabase = getSupabase()
+  if (!supabase) return
+
+  const row: ChatMessageRow = {
+    id: msg.id,
+    canal: msg.canal,
+    autor: msg.autor,
+    nombre: msg.nombre,
+    callsign: msg.callsign || null,
+    contenido: msg.contenido,
+    fecha: msg.fecha,
+    tipo: msg.tipo,
+    leido: msg.leido,
+  }
+  const { error } = await supabase.from('chat_messages').insert(row as any)
+  if (error) console.error('[ChatDB] Error inserting message:', error.message)
+}
+
+export async function markRead(canalId: string, username: string) {
+  const chat = await getChatDB()
+  const now = new Date().toISOString()
+
+  ;(chat.mensajes.get(canalId) || []).forEach(m => {
+    if (!m.leido.includes(username)) m.leido.push(username)
+  })
+
+  if (!isSupabaseEnabled) return
+  const supabase = getSupabase()
+  if (!supabase) return
+
+  const readRow: ChatRead = {
+    canal: canalId,
+    username,
+    last_read_at: now,
+  }
+  const { error } = await supabase.from('chat_reads').upsert(readRow as any)
+  if (error) console.error('[ChatDB] Error updating read status:', error.message)
+}
+
+export async function getLastMessage(canalId: string): Promise<Mensaje | null> {
+  const chat = await getChatDB()
+
+  if (!isSupabaseEnabled) {
+    const msgs = chat.mensajes.get(canalId) || []
+    return msgs.length ? msgs[msgs.length - 1] : null
+  }
+
+  const supabase = getSupabase()
+  if (!supabase) {
+    const msgs = chat.mensajes.get(canalId) || []
+    return msgs.length ? msgs[msgs.length - 1] : null
+  }
+
+  const { data, error } = await supabase
+    .from('chat_messages')
+    .select('*')
+    .eq('canal', canalId)
+    .order('fecha', { ascending: false })
+    .limit(1)
+
+  if (error || !data || data.length === 0) return null
+  return toMensaje(data[0] as ChatMessageRow)
+}
+
+export async function getUnreadCount(canalId: string, username: string): Promise<number> {
+  const chat = await getChatDB()
+
+  if (!isSupabaseEnabled) {
+    return (chat.mensajes.get(canalId) || []).filter(m => m.autor !== username && !m.leido.includes(username)).length
+  }
+
+  const supabase = getSupabase()
+  if (!supabase) {
+    return (chat.mensajes.get(canalId) || []).filter(m => m.autor !== username && !m.leido.includes(username)).length
+  }
+
+  const { data: readData } = await supabase
+    .from('chat_reads')
+    .select('last_read_at')
+    .eq('canal', canalId)
+    .eq('username', username)
+    .limit(1)
+
+  const lastReadAt = (readData as any[])?.[0]?.last_read_at as string | undefined
+  let query = supabase
+    .from('chat_messages')
+    .select('id', { count: 'exact', head: true })
+    .eq('canal', canalId)
+    .neq('autor', username)
+
+  if (lastReadAt) {
+    query = query.gt('fecha', lastReadAt)
+  }
+
+  const { count, error } = await query
+  if (error) {
+    console.error('[ChatDB] Error unread count:', error.message)
+    return 0
+  }
+  return count || 0
+}
+
 export function getOrCreateDM(u1: string, u2: string): Canal {
   const id = 'dm-' + [u1,u2].sort().join('__')
   if (!ChatDB.canales.has(id)) {
@@ -121,15 +301,12 @@ export function getOrCreateDM(u1: string, u2: string): Canal {
   return ChatDB.canales.get(id)!
 }
 
-export function countUnreadDMs(username: string): number {
+export async function countUnreadDMs(username: string): Promise<number> {
+  const chat = await getChatDB()
   let n = 0
-  for (const [id, canal] of ChatDB.canales) {
+  for (const [id, canal] of chat.canales) {
     if (canal.tipo !== 'dm' || !canal.participantes?.includes(username)) continue
-    n += (ChatDB.mensajes.get(id)||[]).filter(m => m.autor!==username && !m.leido.includes(username)).length
+    n += await getUnreadCount(id, username)
   }
   return n
-}
-
-export function markRead(canalId: string, username: string) {
-  ;(ChatDB.mensajes.get(canalId)||[]).forEach(m => { if (!m.leido.includes(username)) m.leido.push(username) })
 }

@@ -17,6 +17,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params
   const TicketsDB = await getTicketsDB()
   const t = TicketsDB.get(id); if (!t) return notFound()
+  if (u.rol === 'federal_agent' && t.creadoPor !== u.username && t.asignadoA !== u.username) return forbidden()
   const body = await req.json().catch(()=>({}))
   const now  = new Date().toISOString()
   const isSuperv = ['command_staff','supervisory'].includes(u.rol)
@@ -27,7 +28,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (body.asignadoA !== undefined && isSuperv) t.asignadoA = body.asignadoA
   if (body.prioridad !== undefined && isSuperv) t.prioridad = body.prioridad
   if (body.comentario) {
-    t.comentarios.push({ id:uuid().slice(0,8), autor:u.username, contenido:body.comentario, fecha:now, interno:body.interno||false })
+    const comentario = String(body.comentario).trim()
+    if (comentario.length > 2000) {
+      return NextResponse.json({ error: 'Comentario demasiado largo (máximo 2000)' }, { status: 400 })
+    }
+    t.comentarios.push({ id:uuid().slice(0,8), autor:u.username, contenido:comentario, fecha:now, interno:body.interno||false })
   }
   t.actualizadoEn = now
   TicketsDB.set(id, t)

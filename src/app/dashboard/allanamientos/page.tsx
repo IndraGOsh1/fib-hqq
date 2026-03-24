@@ -169,7 +169,7 @@ ${item.firmas?.length===0?`
 <script>window.onload=()=>setTimeout(()=>window.print(),500)</script>
 </body></html>`
     const w = window.open('','_blank'); if (w) { w.document.write(html); w.document.close() }
-    editarAllanamiento(itemId,{accion:'generar_pdf'}).catch(()=>{})
+  editarAllanamiento(itemId,{accion:'generar_pdf'}).catch(()=>{})
   }
 
   if (loading) return <div className="modal-overlay"><div className="modal p-8 text-center font-mono text-xs text-tx-muted">Cargando...</div></div>
@@ -253,9 +253,11 @@ ${item.firmas?.length===0?`
           <div className="flex-1 flex flex-col overflow-hidden">
             <div ref={scrollRef} onScroll={onChatScroll} className="flex-1 overflow-y-auto p-4 flex flex-col gap-2">
               {item.mensajes?.map((m:any)=>(
-                <div key={m.id} className={`${m.tipo==='sistema'||m.tipo==='accion'?'flex justify-center':'flex gap-2.5'}`}>
-                  {m.tipo==='sistema'||m.tipo==='accion' ? (
-                    <p className="font-mono text-[8px] text-tx-muted italic py-0.5 px-3 bg-bg-surface border border-bg-border">{m.contenido}</p>
+                <div key={m.id} className={`${m.tipo==='sistema'||m.tipo==='accion'||m.tipo==='documento'?'flex justify-center':'flex gap-2.5'}`}>
+                  {m.tipo==='sistema'||m.tipo==='accion'||m.tipo==='documento' ? (
+                    <div className="font-mono text-[8px] text-tx-muted italic py-0.5 px-3 bg-bg-surface border border-bg-border flex items-center gap-2">
+                      <span>{m.contenido}</span>
+                    </div>
                   ) : (
                     <>
                       <div className={`w-7 h-7 flex items-center justify-center shrink-0 ${m.autor===user?.username?'bg-accent-blue/20 border-accent-blue/30':'bg-bg-surface border-bg-border'} border`}>

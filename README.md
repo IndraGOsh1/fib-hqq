@@ -85,10 +85,21 @@ npm run build
 
 Variables de entorno requeridas en Netlify:
 - `JWT_SECRET`
+- `JWT_SECRET_B64` (alternativa codificada en Base64)
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY` o `SUPABASE_SERVICE_ROLE_KEY_B64` (recomendado para backend)
 - `SPREADSHEET_ID` + `GOOGLE_CREDENTIALS` (si usas Personal)
 - `DISCORD_WEBHOOK_*` (opcional, para logs)
+
+Webhooks recomendados:
+- `DISCORD_WEBHOOK_IMPORTANTE` o `DISCORD_WEBHOOK_IMPORTANTE_B64`: canal para ascensos, descensos, sanciones y vetos.
+- `DISCORD_WEBHOOK_LOGINS` / `DISCORD_WEBHOOK_KEYS` / `DISCORD_WEBHOOK_EXTRAS` (opcionales).
+
+Para codificar en Base64 (PowerShell):
+```powershell
+[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("TU_VALOR_AQUI"))
+```
 
 ---
 

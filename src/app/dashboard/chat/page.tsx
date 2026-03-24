@@ -24,7 +24,7 @@ function playPing() {
 
 export default function ChatPage() {
   const [user, setUser] = useState<any>(null)
-  const [canalesData, setCanalesData] = useState<any>({ canales: [], totalDMUnread: 0 })
+  const [canalesData, setCanalesData] = useState<any>({ canales: [], totalDMUnread: 0, totalUnread: 0 })
   const [canalActivo, setCanalActivo] = useState('general')
   const [mensajes, setMensajes] = useState<any[]>([])
   const [texto, setTexto] = useState('')
@@ -37,6 +37,7 @@ export default function ChatPage() {
   const [musicMuted, setMusicMuted] = useState(false)
   const [showMusicInput, setShowMusicInput] = useState(false)
   const [musicInputVal, setMusicInputVal] = useState('')
+  const [sendError, setSendError] = useState('')
 
   const bottomRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -133,6 +134,7 @@ export default function ChatPage() {
   async function enviar(e: React.FormEvent) {
     e.preventDefault()
     if (!texto.trim() || sending) return
+    setSendError('')
     const txt = texto.trim()
     setTexto('')
     setSending(true)
@@ -141,7 +143,10 @@ export default function ChatPage() {
       isAtBottomRef.current = true
       setIsAtBottom(true)
       await loadMensajes()
-    } catch { setTexto(txt) }
+    } catch (e: any) {
+      setTexto(txt)
+      setSendError(e?.message || 'No se pudo enviar el mensaje')
+    }
     finally { setSending(false); setTimeout(() => inputRef.current?.focus(), 50) }
   }
 
@@ -278,7 +283,11 @@ export default function ChatPage() {
             <div className="flex items-center justify-between px-3 py-1">
               <p className="font-mono text-[7px] tracking-widest uppercase text-tx-dim flex items-center gap-1">
                 DMs
-                {canalesData.totalDMUnread > 0 && <span className="bg-red-500 text-white font-mono text-[7px] rounded-full px-1">{canalesData.totalDMUnread}</span>}
+                {(canalesData.totalDMUnread > 0 || canalesData.totalUnread > 0) && (
+                  <span className="bg-red-500 text-white font-mono text-[7px] rounded-full px-1">
+                    {canalesData.totalDMUnread || canalesData.totalUnread}
+                  </span>
+                )}
               </p>
               <button onClick={() => setShowDM(p => !p)} className="text-tx-dim hover:text-tx-muted"><Plus size={10} /></button>
             </div>
@@ -387,25 +396,28 @@ export default function ChatPage() {
               <p className="font-mono text-[9px] text-tx-muted uppercase tracking-widest">Sin acceso de escritura en este canal</p>
             </div>
           ) : (
-            <div className="flex items-center gap-2 bg-bg-surface border border-bg-border focus-within:border-accent-blue transition-colors">
-              <button type="button"
-                onClick={() => { const url = prompt('URL de imagen:'); if (url?.trim()) setTexto(url.trim()) }}
-                className="px-2.5 py-2.5 text-tx-muted hover:text-accent-blue border-r border-bg-border transition-colors shrink-0">
-                <ImageIcon size={13} />
-              </button>
-              <input
-                ref={inputRef}
-                className="flex-1 bg-transparent px-3 py-2.5 text-sm text-tx-primary placeholder-tx-muted focus:outline-none"
-                placeholder={`Mensaje${canalInfo?.nombre ? ` en ${canalInfo.tipo !== 'dm' ? '#' : '@'}${canalInfo.nombre}` : ''}...`}
-                value={texto}
-                onChange={e => setTexto(e.target.value)}
-                disabled={sending}
-                autoComplete="off"
-              />
-              <button type="submit" disabled={sending || !texto.trim()}
-                className="px-3 py-2.5 text-tx-muted hover:text-accent-blue disabled:opacity-30 transition-colors shrink-0">
-                <Send size={14} />
-              </button>
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2 bg-bg-surface border border-bg-border focus-within:border-accent-blue transition-colors">
+                <button type="button"
+                  onClick={() => { const url = prompt('URL de imagen:'); if (url?.trim()) setTexto(url.trim()) }}
+                  className="px-2.5 py-2.5 text-tx-muted hover:text-accent-blue border-r border-bg-border transition-colors shrink-0">
+                  <ImageIcon size={13} />
+                </button>
+                <input
+                  ref={inputRef}
+                  className="flex-1 bg-transparent px-3 py-2.5 text-sm text-tx-primary placeholder-tx-muted focus:outline-none"
+                  placeholder={`Mensaje${canalInfo?.nombre ? ` en ${canalInfo.tipo !== 'dm' ? '#' : '@'}${canalInfo.nombre}` : ''}...`}
+                  value={texto}
+                  onChange={e => setTexto(e.target.value)}
+                  disabled={sending}
+                  autoComplete="off"
+                />
+                <button type="submit" disabled={sending || !texto.trim()}
+                  className="px-3 py-2.5 text-tx-muted hover:text-accent-blue disabled:opacity-30 transition-colors shrink-0">
+                  <Send size={14} />
+                </button>
+              </div>
+              {sendError && <p className="font-mono text-[9px] text-red-400">{sendError}</p>}
             </div>
           )}
         </form>

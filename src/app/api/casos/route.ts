@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
   const CasosDB = await getCasosDB()
   let lista = Array.from(CasosDB.values())
   if (u.rol === 'federal_agent') lista = lista.filter(c => c.agentesAsignados.includes(u.username) || c.creadoPor === u.username)
-  if (u.rol !== 'command_staff') lista = lista.filter(c => c.clasificacion !== 'confidencial' || c.agentesAsignados.includes(u.username))
+  if (u.rol === 'visitante') lista = lista.filter(c => c.clasificacion !== 'confidencial')
   if (estado) lista = lista.filter(c => c.estado === estado)
   if (unidad) lista = lista.filter(c => c.unidad === unidad)
   lista.sort((a,b) => new Date(b.creadoEn).getTime() - new Date(a.creadoEn).getTime())

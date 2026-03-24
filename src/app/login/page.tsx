@@ -17,6 +17,8 @@ export default function LoginPage() {
   async function submit(e: React.FormEvent) {
     e.preventDefault(); setError(''); setLoading(true)
     try {
+      localStorage.removeItem('fib_token')
+      localStorage.removeItem('fib_user')
       const d = mode === 'login'
         ? await login(form.username, form.password)
         : await register(form.username, form.password, form.codigo, form.nombre)

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { v4 as uuid } from 'uuid'
 import { getUser, unauthorized, forbidden } from '@/lib/auth'
-import { getCarpeta, CarpetasDB } from '@/lib/carpeta-db'
+import { getCarpeta } from '@/lib/carpeta-db'
 
 export async function GET(req: NextRequest) {
   const u = getUser(req)
@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
   if (targetUsername && targetUsername !== u.username) {
     if (!['command_staff', 'supervisory'].includes(u.rol)) return forbidden()
     // Return the other user's carpeta (public anotaciones only for non-CS)
-    const carpeta = getCarpeta(targetUsername)
+    const carpeta = await getCarpeta(targetUsername)
     if (u.rol !== 'command_staff') {
       // Filter out private notes for supervisory
       return NextResponse.json({
@@ -25,13 +25,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(carpeta)
   }
 
-  return NextResponse.json(getCarpeta(u.username))
+  return NextResponse.json(await getCarpeta(u.username))
 }
 
 export async function POST(req: NextRequest) {
   const u = getUser(req)
   if (!u) return unauthorized()
-  const carpeta = getCarpeta(u.username)
+  const carpeta = await getCarpeta(u.username)
   const body = await req.json().catch(()=>({}))
   const now  = new Date().toISOString()
 
@@ -56,7 +56,7 @@ export async function DELETE(req: NextRequest) {
   const u = getUser(req)
   if (!u) return unauthorized()
   const { tipo, id } = await req.json().catch(()=>({}))
-  const carpeta = getCarpeta(u.username)
+  const carpeta = await getCarpeta(u.username)
 
   if (tipo === 'anotacion') carpeta.anotaciones = carpeta.anotaciones.filter((a: any) => a.id !== id)
   if (tipo === 'documento')  carpeta.documentos  = carpeta.documentos.filter((d: any) => d.id !== id)

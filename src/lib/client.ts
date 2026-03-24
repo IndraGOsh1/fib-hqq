@@ -33,6 +33,7 @@ export const borrarInvite = (codigo:string) => api<any>('/invite',{method:'DELET
 // Users
 export const getUsers   = () => api<any>('/users')
 export const editarUser = (id:string,b:any) => api<any>(`/users/${id}`,{method:'PATCH',body:JSON.stringify(b)})
+export const borrarUser = (id:string) => api<any>(`/users/${id}`,{method:'DELETE'})
 
 // Operativos
 export const getOperativos   = (p?:Record<string,string>) => api<any>('/operativos'+(p?'?'+new URLSearchParams(p):''))
@@ -77,3 +78,9 @@ export const borrarCarpetaItem = (tipo:string,id:string) => api<any>('/carpeta',
 export const getConfigVisual   = () => fetch('/api/config-visual').then(r=>r.json())
 export const setConfigVisual   = (b:any) => api<any>('/config-visual',{method:'PATCH',body:JSON.stringify(b)})
 export const resetConfigVisual = () => api<any>('/config-visual',{method:'DELETE'})
+
+// Forms
+export const getForms = () => api<any>('/forms')
+export const saveForm = (b:any) => api<any>('/forms',{method:'POST',body:JSON.stringify(b)})
+export const submitForm = (id:string,b:any) => api<any>(`/forms/${id}/submit`,{method:'POST',body:JSON.stringify(b)})
+export const getFormResponses = (id:string) => api<any>(`/forms/${id}/responses`)

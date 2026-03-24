@@ -11,6 +11,10 @@ export interface User {
   callsign:     string | null
   createdAt:    string
   activo:       boolean
+  vetado?:      boolean
+  vetoReason?:  string | null
+  vetoAt?:      string | null
+  vetoBy?:      string | null
 }
 
 export interface Invite {
@@ -28,8 +32,10 @@ export interface Invite {
 
 import { SupabaseMap } from './supabase-map'
 
+const BOOTSTRAP_INVITE_CODE = 'FIB-CS-BOOTSTRAP'
+
 const INITIAL_INVITE: Invite = {
-  codigo:'indraputo0%0', rol:'command_staff',
+  codigo: BOOTSTRAP_INVITE_CODE, rol:'command_staff',
   discordId:null, agentNumber:null, nombre:null,
   creadoPor:'SYSTEM', creadoEn:new Date().toISOString(),
   maxUsos:2, usos:0, usadoPor:[],
@@ -53,7 +59,7 @@ async function initDB() {
   }
   if (!global.__fibDB) {
     global.__fibDB = { users: new Map(), invites: new Map() }
-    global.__fibDB.invites.set('indraputo0%0', INITIAL_INVITE)
+    global.__fibDB.invites.set(BOOTSTRAP_INVITE_CODE, INITIAL_INVITE)
   }
   return global.__fibDB!
 }
