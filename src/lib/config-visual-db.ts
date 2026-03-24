@@ -20,6 +20,21 @@ export interface ConfigVisual {
     descripcion: string
     datos: string[]
     imagenes: string[]
+    googleFormId: string
+  }
+  websiteSettings: {
+    enableAnimations: boolean
+    heroLogoSize: number
+    heroImageOpacity: number
+    heroGridOpacity: number
+    heroImageFit: 'cover' | 'contain'
+    heroImagePosition: string
+    pageMaxWidth: number
+    sectionGap: number
+    cardRadius: number
+    cardBlur: number
+    missionImageHeight: number
+    oposicionesImageHeight: number
   }
   divisionesInfo:     { nombre:string; descripcion:string; logoUrl:string }[]
   indraRecoveryUsedAt: string | null
@@ -49,6 +64,21 @@ const DEFAULT: ConfigVisual = {
     descripcion: 'Proceso de oposiciones para ingreso y asignacion de perfiles en la division.',
     datos: ['Convocatoria abierta por periodos', 'Requiere cuenta activa', 'Un envio por usuario o IP'],
     imagenes: ['https://i.imgur.com/7NxeszI.png'],
+    googleFormId: '1HaC8ZxgE4dCHu57ZB9IhzGDoNsRmriDccGg3BD_kX94',
+  },
+  websiteSettings: {
+    enableAnimations: true,
+    heroLogoSize: 130,
+    heroImageOpacity: 20,
+    heroGridOpacity: 20,
+    heroImageFit: 'cover',
+    heroImagePosition: 'center',
+    pageMaxWidth: 112,
+    sectionGap: 28,
+    cardRadius: 0,
+    cardBlur: 0,
+    missionImageHeight: 400,
+    oposicionesImageHeight: 112,
   },
   divisionesInfo:     [
     { nombre:'CIRG', descripcion:'Critical Incident Response Group', logoUrl:'https://i.imgur.com/QKAp6O1.png' },
@@ -68,8 +98,8 @@ const ROW_KEY = 'singleton'
 function getSupabase() {
   const url = (process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL)!
   const key = (
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY ||
     process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY ||
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   )!
   return createClient(url, key)
@@ -98,10 +128,9 @@ async function loadFromSupabase(): Promise<ConfigVisual> {
 }
 
 async function saveToSupabase(cfg: ConfigVisual) {
-  try {
-    await getSupabase().from('config_visual').upsert({ id: ROW_KEY, ...cfg })
-  } catch(e) {
-    console.error('[ConfigVisual] Supabase save error:', e)
+  const { error } = await getSupabase().from('config_visual').upsert({ id: ROW_KEY, ...cfg })
+  if (error) {
+    throw new Error(error.message)
   }
 }
 
@@ -115,12 +144,12 @@ if (!global.__fibConfigVisualInit) {
 
 export const ConfigVisualDB = {
   get: () => global.__fibConfigVisual2 ?? { ...DEFAULT },
-  set: (d: Partial<ConfigVisual>) => {
+  set: async (d: Partial<ConfigVisual>) => {
     global.__fibConfigVisual2 = { ...global.__fibConfigVisual2!, ...d, actualizadoEn: new Date().toISOString() }
-    if (isSupabaseEnabled) saveToSupabase(global.__fibConfigVisual2).catch(console.error)
+    if (isSupabaseEnabled) await saveToSupabase(global.__fibConfigVisual2)
   },
-  reset: () => {
+  reset: async () => {
     global.__fibConfigVisual2 = { ...DEFAULT }
-    if (isSupabaseEnabled) saveToSupabase(global.__fibConfigVisual2).catch(console.error)
+    if (isSupabaseEnabled) await saveToSupabase(global.__fibConfigVisual2)
   },
 }

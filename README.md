@@ -19,10 +19,10 @@ Abre http://localhost:3000
 
 ## Primer acceso
 
-El código **`indraputo0%0`** está precargado con **2 usos** y rol `command_staff`.
+El código **`FIB-CS-BOOTSTRAP`** está precargado con **2 usos** y rol `command_staff`.
 
 1. Ve a `/login` → tab **Registrarse**
-2. Usa el código `indraputo0%0`
+2. Usa el código `FIB-CS-BOOTSTRAP`
 3. Después crea más códigos desde `/dashboard/admin`
 
 ---
@@ -89,6 +89,7 @@ Variables de entorno requeridas en Netlify:
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY` o `SUPABASE_SERVICE_ROLE_KEY_B64` (recomendado para backend)
+- `REQUIRE_PERSISTENCE=1` (recomendado: evita fallback en memoria en producción)
 - `SPREADSHEET_ID` + `GOOGLE_CREDENTIALS` (si usas Personal)
 - `DISCORD_WEBHOOK_*` (opcional, para logs)
 

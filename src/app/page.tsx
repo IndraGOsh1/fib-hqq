@@ -2,6 +2,7 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
+import type { CSSProperties } from 'react'
 import { Lock, ChevronRight, Shield, Globe } from 'lucide-react'
 
 const TIPO_TAG: Record<string,string> = {
@@ -55,26 +56,43 @@ const RANKS = [
 ]
 
 type LandingConfig = {
+  nombreDivision?: string
+  descripcionDivision?: string
+  logoUrl?: string
+  fondoHeroUrl?: string
+  textoHero?: string
+  textoSubhero?: string
   textoMision?: string
+  websiteSettings?: {
+    enableAnimations?: boolean
+    heroLogoSize?: number
+    heroImageOpacity?: number
+    heroGridOpacity?: number
+    heroImageFit?: 'cover' | 'contain'
+    heroImagePosition?: string
+    pageMaxWidth?: number
+    sectionGap?: number
+    cardRadius?: number
+    cardBlur?: number
+    missionImageHeight?: number
+    oposicionesImageHeight?: number
+  }
   oposicionesInfo?: {
     titulo?: string
     descripcion?: string
     datos?: string[]
     imagenes?: string[]
+    googleFormId?: string
   }
 }
 
-type OposicionForm = {
+type OposicionPost = {
   id: string
-  title: string
-  description: string
-  fields: Array<{
-    id: string
-    label: string
-    type: string
-    required: boolean
-    options?: string[]
-  }>
+  titulo: string
+  descripcion?: string
+  creadoEn: string
+  nombreAutor?: string
+  tags?: string[]
 }
 
 function Ticker() {
@@ -91,76 +109,72 @@ function Ticker() {
 
 export default function Home() {
   const [config, setConfig] = useState<LandingConfig>({})
-  const [oposForm, setOposForm] = useState<OposicionForm | null>(null)
-  const [oposAnswers, setOposAnswers] = useState<Record<string, any>>({})
-  const [oposStartedAt, setOposStartedAt] = useState<number>(Date.now())
-  const [oposBusy, setOposBusy] = useState(false)
-  const [oposMsg, setOposMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const [oposPosts, setOposPosts] = useState<OposicionPost[]>([])
 
   useEffect(() => {
     fetch('/api/config-visual').then(r => r.json()).then(setConfig).catch(() => {})
   }, [])
 
   useEffect(() => {
-    const token = typeof window !== 'undefined' ? (localStorage.getItem('fib_token') || '') : ''
-    if (!token) return
-
-    fetch('/api/forms', { headers: { Authorization: `Bearer ${token}` } })
-      .then(async (r) => (r.ok ? r.json() : null))
-      .then((payload) => {
-        const forms = Array.isArray(payload?.forms) ? payload.forms : []
-        const first = forms.find((f: any) => f?.kind === 'oposicion' && f?.active)
-        if (first) {
-          setOposForm(first)
-          setOposStartedAt(Date.now())
-        }
+    fetch('/api/operativos?publica=1')
+      .then(r => r.json())
+      .then((rows) => {
+        const all = Array.isArray(rows) ? rows : []
+        const related = all
+          .filter((item: any) => {
+            const tags = Array.isArray(item?.tags) ? item.tags.map((x: any) => String(x || '').toLowerCase()) : []
+            const titulo = String(item?.titulo || '').toLowerCase()
+            const descripcion = String(item?.descripcion || '').toLowerCase()
+            return tags.includes('oposiciones') || titulo.includes('oposicion') || descripcion.includes('oposicion')
+          })
+          .slice(0, 4)
+        setOposPosts(related)
       })
       .catch(() => {})
   }, [])
 
-  async function submitOposicion() {
-    if (!oposForm) return
-    const token = typeof window !== 'undefined' ? (localStorage.getItem('fib_token') || '') : ''
-    if (!token) {
-      setOposMsg({ ok: false, text: 'Inicia sesión para enviar oposiciones.' })
-      return
-    }
-
-    setOposBusy(true)
-    try {
-      const res = await fetch(`/api/forms/${oposForm.id}/submit`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ hp: '', startedAt: oposStartedAt, answers: oposAnswers }),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(data?.error || 'No se pudo enviar la oposicion')
-      setOposAnswers({})
-      setOposStartedAt(Date.now())
-      setOposMsg({ ok: true, text: 'Oposicion enviada correctamente.' })
-    } catch (e: any) {
-      setOposMsg({ ok: false, text: String(e?.message || 'Error al enviar') })
-    } finally {
-      setOposBusy(false)
-    }
-  }
-
   const oposInfo = config.oposicionesInfo || {}
   const oposDatos = Array.isArray(oposInfo.datos) ? oposInfo.datos : []
   const oposImagenes = Array.isArray(oposInfo.imagenes) ? oposInfo.imagenes : []
+  const configuredFormId = String(oposInfo.googleFormId || '').trim()
+  const googleFormId = configuredFormId || '1HaC8ZxgE4dCHu57ZB9IhzGDoNsRmriDccGg3BD_kX94'
+  const googleFormEmbedUrl = `https://docs.google.com/forms/d/e/${googleFormId}/viewform?embedded=true`
+  const googleFormOpenUrl = `https://docs.google.com/forms/d/e/${googleFormId}/viewform`
+  const ws = {
+    enableAnimations: config.websiteSettings?.enableAnimations !== false,
+    heroLogoSize: config.websiteSettings?.heroLogoSize ?? 130,
+    heroImageOpacity: config.websiteSettings?.heroImageOpacity ?? 20,
+    heroGridOpacity: config.websiteSettings?.heroGridOpacity ?? 20,
+    heroImageFit: config.websiteSettings?.heroImageFit ?? 'cover',
+    heroImagePosition: config.websiteSettings?.heroImagePosition ?? 'center',
+    pageMaxWidth: config.websiteSettings?.pageMaxWidth ?? 112,
+    sectionGap: config.websiteSettings?.sectionGap ?? 28,
+    cardRadius: config.websiteSettings?.cardRadius ?? 0,
+    cardBlur: config.websiteSettings?.cardBlur ?? 0,
+    missionImageHeight: config.websiteSettings?.missionImageHeight ?? 400,
+    oposicionesImageHeight: config.websiteSettings?.oposicionesImageHeight ?? 112,
+  }
+  const maxWidthStyle = { maxWidth: `${ws.pageMaxWidth}rem` }
+  const sectionPadding = `${ws.sectionGap * 4}px`
+  const compactSectionPadding = `${Math.round(ws.sectionGap * 3)}px`
+  const cardStyle = {
+    borderRadius: `${ws.cardRadius}px`,
+    backdropFilter: ws.cardBlur > 0 ? `blur(${ws.cardBlur}px)` : undefined,
+  } as CSSProperties
+  const animated = ws.enableAnimations
+  const divisionName = config.nombreDivision || 'Federal Investigation Bureau'
+  const heroTitle = config.textoHero || 'Federal Investigation Bureau'
+  const heroSubtitle = config.textoSubhero || 'Sistema centralizado de gestión operativa'
 
   return (
-    <main className="min-h-screen bg-bg-base">
+    <main className="min-h-screen bg-bg-base" style={{ backgroundImage: 'radial-gradient(circle at 12% 18%, rgba(27,111,255,0.10), transparent 35%), radial-gradient(circle at 88% 82%, rgba(0,196,255,0.08), transparent 35%)' }}>
       {/* Nav */}
       <nav className="fixed top-0 inset-x-0 z-50 border-b border-bg-border/0 hover:border-bg-border bg-bg-base/0 hover:bg-bg-base/90 transition-all duration-300 backdrop-blur-sm">
-        <div className="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
+        <div className="mx-auto px-6 h-14 flex items-center justify-between" style={maxWidthStyle}>
           <div className="flex items-center gap-2.5">
-            <Image src="https://i.imgur.com/EAimMhx.png" alt="FIB" width={28} height={28} className="opacity-80" />
+            <Image src={config.logoUrl || 'https://i.imgur.com/EAimMhx.png'} alt="FIB" width={28} height={28} className="opacity-90" />
             <div>
-              <p className="font-display text-xs font-semibold tracking-widest uppercase text-tx-primary leading-none">Federal Investigation Bureau</p>
+              <p className="font-display text-xs font-semibold tracking-widest uppercase text-tx-primary leading-none">{divisionName}</p>
               <p className="font-mono text-[8px] text-tx-muted tracking-widest">HQ SYSTEM</p>
             </div>
           </div>
@@ -179,10 +193,15 @@ export default function Home() {
 
       {/* Hero */}
       <section className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden px-6">
-        <div className="absolute inset-0 opacity-20" style={{backgroundImage:"url(\"data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%231A2535' fill-opacity='1'%3E%3Cpath d='M0 0h1v40H0zm39 0h1v40h-1zM0 0v1h40V0zm0 39v1h40v-1z'/%3E%3C/g%3E%3C/svg%3E\")"}} />
+        {config.fondoHeroUrl && (
+          <div className="absolute inset-0 pointer-events-none" style={{ opacity: ws.heroImageOpacity / 100 }}>
+            <img src={config.fondoHeroUrl} alt="Hero background" className="w-full h-full" style={{ objectFit: ws.heroImageFit, objectPosition: ws.heroImagePosition }} />
+          </div>
+        )}
+        <div className="absolute inset-0" style={{ opacity: ws.heroGridOpacity / 100, backgroundImage:"url(\"data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%231A2535' fill-opacity='1'%3E%3Cpath d='M0 0h1v40H0zm39 0h1v40h-1zM0 0v1h40V0zm0 39v1h40v-1z'/%3E%3C/g%3E%3C/svg%3E\")"}} />
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] rounded-full bg-accent-blue/5 blur-3xl pointer-events-none" />
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <div className="w-full h-px bg-gradient-to-r from-transparent via-accent-blue/20 to-transparent animate-scan" />
+          <div className={`w-full h-px bg-gradient-to-r from-transparent via-accent-blue/20 to-transparent ${animated ? 'animate-scan' : ''}`} />
         </div>
         {(['top-8 left-8','top-8 right-8','bottom-8 left-8','bottom-8 right-8'] as const).map((pos,i) => (
           <div key={i} className={`absolute ${pos} w-7 h-7 opacity-20`}>
@@ -191,21 +210,20 @@ export default function Home() {
           </div>
         ))}
 
-        <div className="relative z-10 flex flex-col items-center text-center max-w-4xl animate-fade-up">
+        <div className={`relative z-10 flex flex-col items-center text-center max-w-4xl ${animated ? 'animate-fade-up' : ''}`}>
           <div className="mb-6"><Ticker /></div>
           <div className="relative mb-8">
             <div className="absolute inset-0 blur-2xl bg-accent-blue/10 rounded-full scale-150" />
-            <Image src="https://i.imgur.com/naw30N7.png" alt="FIB" width={130} height={130} className="relative z-10 drop-shadow-2xl" />
+            <Image src={config.logoUrl || 'https://i.imgur.com/naw30N7.png'} alt="FIB" width={ws.heroLogoSize} height={ws.heroLogoSize} className="relative z-10 drop-shadow-2xl" />
           </div>
           <p className="font-mono text-accent-cyan text-[10px] tracking-[0.4em] uppercase mb-3">Department of Justice</p>
-          <h1 className="font-display text-6xl md:text-8xl font-bold tracking-wider text-tx-primary uppercase leading-none">Federal</h1>
-          <h1 className="font-display text-6xl md:text-8xl font-light tracking-wider text-tx-secondary uppercase leading-none mb-2">Investigation Bureau</h1>
+          <h1 className="font-display text-5xl md:text-7xl font-bold tracking-wider text-tx-primary uppercase leading-none">{heroTitle}</h1>
           <div className="flex items-center gap-4 my-5">
             <div className="h-px w-16 bg-gradient-to-r from-transparent to-accent-blue" />
             <span className="font-mono text-accent-gold text-[10px] tracking-[0.3em] uppercase">HQ Operations Center</span>
             <div className="h-px w-16 bg-gradient-to-l from-transparent to-accent-blue" />
           </div>
-          <p className="text-tx-secondary text-sm max-w-lg leading-relaxed mb-8">Sistema centralizado de gestión operativa. Personal, investigaciones, allanamientos y recursos internos.</p>
+          <p className="text-tx-secondary text-sm max-w-lg leading-relaxed mb-8">{heroSubtitle}</p>
           <div className="flex flex-col sm:flex-row gap-3">
             <Link href="/login"><button className="btn-primary"><Lock size={12} />Acceso al Sistema<ChevronRight size={12} /></button></Link>
             <a href="#unidades"><button className="btn-ghost"><Globe size={12} />Ver División</button></a>
@@ -218,8 +236,8 @@ export default function Home() {
       </section>
 
       {/* Operativos Públicos */}
-      <section className="py-20 px-6 bg-bg-surface/40">
-        <div className="max-w-7xl mx-auto">
+      <section className="px-6 bg-bg-surface/40" style={{ paddingTop: compactSectionPadding, paddingBottom: compactSectionPadding }}>
+        <div className="mx-auto" style={maxWidthStyle}>
           <div className="mb-10 flex items-end justify-between">
             <div>
               <span className="section-tag">// Actividad Reciente</span>
@@ -233,16 +251,16 @@ export default function Home() {
       </section>
 
       {/* Unidades */}
-      <section id="unidades" className="py-28 px-6">
-        <div className="max-w-7xl mx-auto">
+      <section id="unidades" className="px-6" style={{ paddingTop: sectionPadding, paddingBottom: sectionPadding }}>
+        <div className="mx-auto" style={maxWidthStyle}>
           <div className="mb-10">
             <span className="section-tag">// Unidades Especializadas</span>
             <div className="divider" />
             <h2 className="font-display text-3xl font-semibold tracking-wider uppercase text-tx-primary">Grupos Operativos</h2>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-bg-border">
-            {UNITS.map(u => (
-              <div key={u.name} className="group bg-bg-card hover:bg-bg-hover transition-all duration-300 p-7 flex flex-col items-center gap-3">
+            {UNITS.map((u, idx) => (
+              <div key={u.name} className={`group bg-bg-card hover:bg-bg-hover transition-all duration-300 p-7 flex flex-col items-center gap-3 ${animated ? 'animate-fade-up' : ''}`} style={{ ...cardStyle, animationDelay: `${idx * 60}ms` }}>
                 <div className="relative w-16 h-16">
                   <Image src={u.logo} alt={u.name} fill className="object-contain grayscale group-hover:grayscale-0 opacity-60 group-hover:opacity-100 transition-all duration-500" />
                 </div>
@@ -257,16 +275,16 @@ export default function Home() {
       </section>
 
       {/* Rangos */}
-      <section id="rangos" className="py-28 px-6 bg-bg-surface/40">
-        <div className="max-w-7xl mx-auto">
+      <section id="rangos" className="px-6 bg-bg-surface/40" style={{ paddingTop: sectionPadding, paddingBottom: sectionPadding }}>
+        <div className="mx-auto" style={maxWidthStyle}>
           <div className="mb-10">
             <span className="section-tag">// Jerarquía Institucional</span>
             <div className="divider" />
             <h2 className="font-display text-3xl font-semibold tracking-wider uppercase text-tx-primary">Estructura de Rangos</h2>
           </div>
           <div className="grid md:grid-cols-4 gap-px bg-bg-border">
-            {RANKS.map(s => (
-              <div key={s.section} className={`bg-bg-card border-t-2 ${s.color} p-5`}>
+            {RANKS.map((s, idx) => (
+              <div key={s.section} className={`bg-bg-card border-t-2 ${s.color} p-5 ${animated ? 'animate-fade-up' : ''}`} style={{ ...cardStyle, animationDelay: `${idx * 70}ms` }}>
                 <div className="flex items-center gap-2 mb-4">
                   <Shield size={13} className="text-tx-muted" />
                   <h3 className="font-display text-xs font-semibold tracking-widest uppercase text-tx-primary">{s.section}</h3>
@@ -284,8 +302,8 @@ export default function Home() {
       </section>
 
       {/* Mission + Oposiciones */}
-      <section id="mision" className="py-28 px-6">
-        <div className="max-w-7xl mx-auto grid md:grid-cols-2 gap-8 items-start">
+      <section id="mision" className="px-6" style={{ paddingTop: sectionPadding, paddingBottom: sectionPadding }}>
+        <div className="mx-auto grid md:grid-cols-2 gap-8 items-start" style={maxWidthStyle}>
           <div>
             <span className="section-tag">// Declaración Institucional</span>
             <div className="divider" />
@@ -293,17 +311,17 @@ export default function Home() {
             <p className="text-tx-secondary text-sm leading-relaxed mb-7">{config.textoMision || 'La FIB es la principal agencia de inteligencia e investigación federal. Protegemos el estado de derecho mediante operaciones encubiertas, investigación criminal avanzada y coordinación inter-divisional.'}</p>
             <Link href="/login"><button className="btn-primary"><Lock size={12} />Ingresar al Sistema<ChevronRight size={12} /></button></Link>
           </div>
-          <div className="relative border border-bg-border overflow-hidden">
+          <div className="relative border border-bg-border overflow-hidden" style={cardStyle}>
             <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-accent-blue/50 to-transparent" />
-            <Image src="https://i.imgur.com/7NxeszI.png" alt="FIB Gala" width={600} height={400} className="w-full object-cover grayscale hover:grayscale-0 transition-all duration-700" />
+            <Image src={oposImagenes[0] || 'https://i.imgur.com/7NxeszI.png'} alt="FIB Gala" width={600} height={400} className="w-full object-cover grayscale hover:grayscale-0 transition-all duration-700" style={{ height: `${ws.missionImageHeight}px` }} />
             <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-bg-base/80 to-transparent p-4">
               <p className="font-mono text-[9px] text-tx-muted tracking-widest uppercase">FIB — Gala Institucional</p>
             </div>
           </div>
         </div>
 
-        <div id="oposiciones" className="max-w-7xl mx-auto mt-8 grid md:grid-cols-2 gap-8">
-          <div className="card p-6">
+        <div id="oposiciones" className="mx-auto mt-8 grid md:grid-cols-2 gap-8" style={maxWidthStyle}>
+          <div className="card p-6" style={cardStyle}>
             <span className="section-tag">// Convocatoria</span>
             <h3 className="font-display text-2xl font-semibold tracking-wider uppercase text-tx-primary mt-2 mb-3">{oposInfo.titulo || 'Oposiciones'}</h3>
             <p className="text-sm text-tx-secondary leading-relaxed mb-4">{oposInfo.descripcion || 'Proceso de oposiciones para ingreso y asignacion de perfiles en la division.'}</p>
@@ -315,75 +333,48 @@ export default function Home() {
             {oposImagenes.length > 0 && (
               <div className="grid grid-cols-2 gap-2">
                 {oposImagenes.slice(0, 4).map((img, idx) => (
-                  <img key={`${img}-${idx}`} src={img} alt="Oposiciones" className="w-full h-28 object-cover border border-bg-border" />
+                  <img key={`${img}-${idx}`} src={img} alt="Oposiciones" className="w-full object-cover border border-bg-border" style={{ height: `${ws.oposicionesImageHeight}px` }} />
                 ))}
               </div>
             )}
           </div>
 
-          <div className="card p-6">
-            <span className="section-tag">// Formulario de Oposición</span>
-            {!oposForm && (
-              <div className="mt-3">
-                <p className="text-xs text-tx-muted mb-3">No hay formulario de oposiciones activo o no tienes sesión.</p>
-                <Link href="/login"><button className="btn-primary"><Lock size={12} />Iniciar sesión</button></Link>
-              </div>
-            )}
+          <div className="card p-6" style={cardStyle}>
+            <span className="section-tag">// Google Forms</span>
+            <h4 className="font-display text-sm font-semibold tracking-wider uppercase text-tx-primary mt-3 mb-2">Postulación de Oposiciones</h4>
+            <iframe
+              title="Formulario de Oposiciones"
+              src={googleFormEmbedUrl}
+              className="w-full h-[560px] border border-bg-border bg-black"
+              loading="lazy"
+            />
+            <a href={googleFormOpenUrl} target="_blank" rel="noreferrer" className="font-mono text-[9px] text-accent-blue hover:underline mt-2 inline-block">Abrir formulario en nueva pestaña</a>
 
-            {oposForm && (
-              <div className="mt-3 space-y-3">
-                <h4 className="font-display text-sm font-semibold tracking-wider uppercase text-tx-primary">{oposForm.title}</h4>
-                {oposForm.description && <p className="text-xs text-tx-secondary">{oposForm.description}</p>}
-
-                {oposForm.fields.map((field) => (
-                  <div key={field.id}>
-                    <label className="label">{field.label}{field.required ? ' *' : ''}</label>
-                    {(field.type === 'textarea') && (
-                      <textarea
-                        className="input min-h-16"
-                        value={oposAnswers[field.id] || ''}
-                        onChange={(e) => setOposAnswers((p) => ({ ...p, [field.id]: e.target.value }))}
-                      />
-                    )}
-                    {(field.type === 'text' || field.type === 'date' || field.type === 'number') && (
-                      <input
-                        type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'}
-                        className="input"
-                        value={oposAnswers[field.id] || ''}
-                        onChange={(e) => setOposAnswers((p) => ({ ...p, [field.id]: e.target.value }))}
-                      />
-                    )}
-                    {['select', 'radio'].includes(field.type) && (
-                      <select
-                        className="input"
-                        value={oposAnswers[field.id] || ''}
-                        onChange={(e) => setOposAnswers((p) => ({ ...p, [field.id]: e.target.value }))}
-                      >
-                        <option value="">Selecciona...</option>
-                        {(field.options || []).map((opt) => <option key={opt} value={opt}>{opt}</option>)}
-                      </select>
-                    )}
+            <div className="mt-5 pt-4 border-t border-bg-border">
+              <span className="section-tag">// Novedades de Oposiciones</span>
+              <div className="mt-2 space-y-2">
+                {oposPosts.length === 0 && (
+                  <p className="text-xs text-tx-muted">Sin novedades publicadas por el momento.</p>
+                )}
+                {oposPosts.map((post) => (
+                  <div key={post.id} className="border border-bg-border bg-bg-surface p-2.5" style={cardStyle}>
+                    <p className="font-display text-xs tracking-wider uppercase text-tx-primary">{post.titulo}</p>
+                    {post.descripcion && <p className="text-xs text-tx-secondary mt-1">{post.descripcion}</p>}
+                    <p className="font-mono text-[8px] text-tx-muted mt-1.5">{new Date(post.creadoEn).toLocaleDateString('es')} · {post.nombreAutor || 'FIB'}</p>
                   </div>
                 ))}
-
-                <button onClick={submitOposicion} disabled={oposBusy} className="btn-primary">
-                  {oposBusy ? 'Enviando...' : 'Enviar oposición'}
-                </button>
-                {oposMsg && (
-                  <p className={`text-xs ${oposMsg.ok ? 'text-green-400' : 'text-red-400'}`}>{oposMsg.text}</p>
-                )}
               </div>
-            )}
+            </div>
           </div>
         </div>
       </section>
 
       {/* Footer */}
       <footer className="border-t border-bg-border py-5 px-6">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-3">
+        <div className="mx-auto flex flex-col md:flex-row items-center justify-between gap-3" style={maxWidthStyle}>
           <div className="flex items-center gap-2.5">
-            <Image src="https://i.imgur.com/EAimMhx.png" alt="FIB" width={18} height={18} className="opacity-30" />
-            <span className="font-mono text-[9px] text-tx-muted tracking-widest uppercase">Federal Investigation Bureau © 2024 — All Rights Reserved</span>
+            <Image src={config.logoUrl || 'https://i.imgur.com/EAimMhx.png'} alt="FIB" width={18} height={18} className="opacity-30" />
+            <span className="font-mono text-[9px] text-tx-muted tracking-widest uppercase">{divisionName} © 2024 — All Rights Reserved</span>
           </div>
           <div className="flex items-center gap-1.5">
             <div className="w-1.5 h-1.5 rounded-full bg-accent-green animate-pulse" />

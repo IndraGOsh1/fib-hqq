@@ -216,14 +216,16 @@ CREATE TABLE IF NOT EXISTS config_visual (
   "textoHero"           TEXT DEFAULT 'Federal Investigation Bureau',
   "textoSubhero"        TEXT DEFAULT 'Sistema centralizado de gestión operativa',
   "textoMision"         TEXT DEFAULT 'Proteger la integridad del estado de derecho.',
-  "oposicionesInfo"     JSONB DEFAULT '{"titulo":"Oposiciones","descripcion":"Proceso de oposiciones para ingreso y asignacion de perfiles en la division.","datos":["Convocatoria abierta por periodos","Requiere cuenta activa","Un envio por usuario o IP"],"imagenes":["https://i.imgur.com/7NxeszI.png"]}'::jsonb,
+  "oposicionesInfo"     JSONB DEFAULT '{"titulo":"Oposiciones","descripcion":"Proceso de oposiciones para ingreso y asignacion de perfiles en la division.","datos":["Convocatoria abierta por periodos","Requiere cuenta activa","Un envio por usuario o IP"],"imagenes":["https://i.imgur.com/7NxeszI.png"],"googleFormId":"1HaC8ZxgE4dCHu57ZB9IhzGDoNsRmriDccGg3BD_kX94"}'::jsonb,
+  "websiteSettings"     JSONB DEFAULT '{"enableAnimations":true,"heroLogoSize":130,"heroImageOpacity":20,"heroGridOpacity":20,"heroImageFit":"cover","heroImagePosition":"center","pageMaxWidth":112,"sectionGap":28,"cardRadius":0,"cardBlur":0,"missionImageHeight":400,"oposicionesImageHeight":112}'::jsonb,
   "indraRecoveryUsedAt" TIMESTAMPTZ,
   "divisionesInfo"      JSONB DEFAULT '[{"nombre":"CIRG","descripcion":"Critical Incident Response Group","logoUrl":"https://i.imgur.com/QKAp6O1.png"},{"nombre":"ERT","descripcion":"Evidence Response Team","logoUrl":"https://i.imgur.com/IemqOQh.png"},{"nombre":"RRHH","descripcion":"Recursos Humanos","logoUrl":"https://i.imgur.com/z5NiemF.png"}]'::jsonb,
   "actualizadoPor"      TEXT DEFAULT 'SYSTEM',
   "actualizadoEn"       TIMESTAMPTZ DEFAULT now()
 );
 
-ALTER TABLE config_visual ADD COLUMN IF NOT EXISTS "oposicionesInfo" JSONB DEFAULT '{"titulo":"Oposiciones","descripcion":"Proceso de oposiciones para ingreso y asignacion de perfiles en la division.","datos":["Convocatoria abierta por periodos","Requiere cuenta activa","Un envio por usuario o IP"],"imagenes":["https://i.imgur.com/7NxeszI.png"]}'::jsonb;
+ALTER TABLE config_visual ADD COLUMN IF NOT EXISTS "oposicionesInfo" JSONB DEFAULT '{"titulo":"Oposiciones","descripcion":"Proceso de oposiciones para ingreso y asignacion de perfiles en la division.","datos":["Convocatoria abierta por periodos","Requiere cuenta activa","Un envio por usuario o IP"],"imagenes":["https://i.imgur.com/7NxeszI.png"],"googleFormId":"1HaC8ZxgE4dCHu57ZB9IhzGDoNsRmriDccGg3BD_kX94"}'::jsonb;
+ALTER TABLE config_visual ADD COLUMN IF NOT EXISTS "websiteSettings" JSONB DEFAULT '{"enableAnimations":true,"heroLogoSize":130,"heroImageOpacity":20,"heroGridOpacity":20,"heroImageFit":"cover","heroImagePosition":"center","pageMaxWidth":112,"sectionGap":28,"cardRadius":0,"cardBlur":0,"missionImageHeight":400,"oposicionesImageHeight":112}'::jsonb;
 ALTER TABLE config_visual ADD COLUMN IF NOT EXISTS "indraRecoveryUsedAt" TIMESTAMPTZ;
 
 INSERT INTO config_visual (id) VALUES ('singleton') ON CONFLICT (id) DO NOTHING;

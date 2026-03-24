@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getUser, unauthorized, forbidden, notFound } from '@/lib/auth'
-import { getDB, type Rol } from '@/lib/db'
+import { deleteUserById, getDB, persistUser, type Rol } from '@/lib/db'
 import { logKeyAction, logRegistroImportante } from '@/lib/webhook'
 
 const ROLES: Rol[] = ['command_staff', 'supervisory', 'federal_agent', 'visitante']
@@ -52,6 +52,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     logKeyAction('Callsign asignado', u.username, `${usr.username} → ${callsign}`)
   }
   db.users.set(id, usr)
+  try {
+    await persistUser(usr)
+  } catch {
+    return NextResponse.json({ error: 'No se pudo persistir el usuario en base de datos. Reintenta.' }, { status: 503 })
+  }
   const { passwordHash:_, ...safe } = usr
   return NextResponse.json({ mensaje:'✅ Usuario actualizado', usuario:safe })
 }
@@ -68,6 +73,13 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     return NextResponse.json({ error: 'No puedes eliminar tu propia cuenta' }, { status: 400 })
   }
 
+  const backup = db.users.get(id)
   db.users.delete(id)
+  try {
+    await deleteUserById(id)
+  } catch {
+    if (backup) db.users.set(id, backup)
+    return NextResponse.json({ error: 'No se pudo eliminar el usuario en base de datos. Reintenta.' }, { status: 503 })
+  }
   return NextResponse.json({ mensaje: '✅ Usuario eliminado' })
 }

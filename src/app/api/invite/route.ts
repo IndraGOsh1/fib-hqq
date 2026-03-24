@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { randomBytes } from 'crypto'
 import { getUser, unauthorized, forbidden, err } from '@/lib/auth'
-import { getDB, type Rol } from '@/lib/db'
+import { deleteInviteByCode, getDB, persistInvite, type Rol } from '@/lib/db'
 import { logInviteCodes } from '@/lib/webhook'
 import { getRequestIp, rateLimit } from '@/lib/security'
 
@@ -47,6 +47,12 @@ export async function POST(req: NextRequest) {
     creadoEn:new Date().toISOString(), maxUsos:usos, usos:0, usadoPor:[],
   }
   db.invites.set(codigo, invite)
+  try {
+    await persistInvite(invite)
+  } catch {
+    db.invites.delete(codigo)
+    return err('No se pudo persistir el codigo en base de datos. Reintenta.', 503)
+  }
   logInviteCodes('Creada', codigo, rol, u.username)
   return NextResponse.json({ mensaje:'✅ Código creado', codigo, rol, maxUsos:usos }, { status:201 })
 }
@@ -58,7 +64,14 @@ export async function DELETE(req: NextRequest) {
   const db = await getDB()
   const code = String(codigo || '').trim().toUpperCase()
   if (!code || !db.invites.has(code)) return err('Código no encontrado', 404)
+  const previous = db.invites.get(code)
   logInviteCodes('Eliminada', code, db.invites.get(code)!.rol, u.username)
   db.invites.delete(code)
+  try {
+    await deleteInviteByCode(code)
+  } catch {
+    if (previous) db.invites.set(code, previous)
+    return err('No se pudo eliminar el codigo en base de datos. Reintenta.', 503)
+  }
   return NextResponse.json({ mensaje:'✅ Código eliminado' })
 }

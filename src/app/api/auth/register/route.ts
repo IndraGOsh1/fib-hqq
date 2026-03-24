@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import bcrypt from 'bcryptjs'
 import { v4 as uuid } from 'uuid'
-import { getDB } from '@/lib/db'
+import { getDB, persistUserAndInvite } from '@/lib/db'
 import { signToken, err } from '@/lib/auth'
 import { logRegister } from '@/lib/webhook'
 import { getRequestIp, isStrongEnoughPassword, rateLimit } from '@/lib/security'
@@ -49,6 +49,16 @@ export async function POST(req: NextRequest) {
   await getCarpeta(user.username)
   inv.usos++; inv.usadoPor.push(normalizedUsername)
   db.invites.set(inv.codigo, inv)
+  try {
+    await persistUserAndInvite(user, inv)
+  } catch {
+    // Keep in-memory and persisted state aligned if a durable write fails.
+    db.users.delete(id)
+    inv.usos = Math.max(0, inv.usos - 1)
+    inv.usadoPor = inv.usadoPor.filter((x: string) => x !== normalizedUsername)
+    db.invites.set(inv.codigo, inv)
+    return err('No se pudo completar el registro en este momento. Reintenta.', 503)
+  }
   logRegister(user.username, user.rol, inv.codigo)
   const token = signToken({ id, username:user.username, rol:user.rol, nombre:user.nombre, agentNumber:user.agentNumber, callsign:null, clases: [] })
   return NextResponse.json({ token, usuario:{ id, username:user.username, rol:user.rol, nombre:user.nombre, agentNumber:user.agentNumber, callsign:null, clases: [] } }, { status:201 })

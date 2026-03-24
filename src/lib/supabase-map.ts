@@ -24,6 +24,8 @@ function getClient() {
   return _client
 }
 
+const strictPersistence = process.env.NODE_ENV === 'production' || process.env.REQUIRE_PERSISTENCE === '1'
+
 export class SupabaseMap<K extends string, V extends Record<string, any>> {
   private table: string
   private pkField: K
@@ -45,7 +47,9 @@ export class SupabaseMap<K extends string, V extends Record<string, any>> {
 
     const client = getClient()
     if (!client) {
-      console.warn(`[SupabaseMap] Missing Supabase config. Using in-memory fallback for ${table}.`)
+      const message = `[SupabaseMap] Missing Supabase config for ${table}.`
+      if (strictPersistence) throw new Error(`${message} Persistence is required in production.`)
+      console.warn(`${message} Using in-memory fallback for local/dev.`)
       return fallback
     }
 

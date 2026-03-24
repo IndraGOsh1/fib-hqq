@@ -1,4 +1,5 @@
 'use client'
+import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { Save, RefreshCw, CheckCircle, AlertCircle, RotateCcw, Palette, Image, Type, Bell, Key, Users, Globe, Edit3, Eye, X, Shield } from 'lucide-react'
 import { getConfigVisual, setConfigVisual, resetConfigVisual, getInvites, crearInvite, borrarInvite } from '@/lib/client'
@@ -137,6 +138,10 @@ export default function ConfigPage() {
 
   const set = (k:string) => (v:any) => setConfigS((p:any)=>({...p,[k]:v}))
   const setE = (k:string) => (e:React.ChangeEvent<HTMLInputElement|HTMLTextAreaElement|HTMLSelectElement>) => set(k)(e.target.value)
+  const setWS = (k: string, v: any) => setConfigS((p: any) => ({
+    ...p,
+    websiteSettings: { ...(p.websiteSettings || {}), [k]: v },
+  }))
 
   async function guardar() {
     setSaving(true)
@@ -337,6 +342,66 @@ export default function ConfigPage() {
             ))}
             {isCS && <button onClick={()=>set('divisionesInfo')([...(config.divisionesInfo||[]),{nombre:'',descripcion:'',logoUrl:''}])} className="btn-ghost text-[9px] py-1.5">+ Agregar División</button>}
           </div>
+
+          <div className="card p-5 flex flex-col gap-4">
+            <span className="section-tag">// Apariencia Avanzada (Website)</span>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="label">Animaciones</label>
+                <select className="input" value={config.websiteSettings?.enableAnimations ? '1' : '0'} onChange={e => setWS('enableAnimations', e.target.value === '1')} disabled={!isCS}>
+                  <option value="1">Activadas</option>
+                  <option value="0">Desactivadas</option>
+                </select>
+              </div>
+              <div>
+                <label className="label">Tamaño logo hero (px)</label>
+                <input className="input" type="number" min={72} max={260} value={config.websiteSettings?.heroLogoSize ?? 130} onChange={e => setWS('heroLogoSize', Number(e.target.value))} disabled={!isCS} />
+              </div>
+              <div>
+                <label className="label">Opacidad imagen hero (%)</label>
+                <input className="input" type="number" min={0} max={100} value={config.websiteSettings?.heroImageOpacity ?? 20} onChange={e => setWS('heroImageOpacity', Number(e.target.value))} disabled={!isCS} />
+              </div>
+              <div>
+                <label className="label">Opacidad retícula hero (%)</label>
+                <input className="input" type="number" min={0} max={100} value={config.websiteSettings?.heroGridOpacity ?? 20} onChange={e => setWS('heroGridOpacity', Number(e.target.value))} disabled={!isCS} />
+              </div>
+              <div>
+                <label className="label">Ajuste imagen hero</label>
+                <select className="input" value={config.websiteSettings?.heroImageFit ?? 'cover'} onChange={e => setWS('heroImageFit', e.target.value)} disabled={!isCS}>
+                  <option value="cover">cover</option>
+                  <option value="contain">contain</option>
+                </select>
+              </div>
+              <div>
+                <label className="label">Posición imagen hero</label>
+                <input className="input" value={config.websiteSettings?.heroImagePosition ?? 'center'} onChange={e => setWS('heroImagePosition', e.target.value)} disabled={!isCS} placeholder="center" />
+              </div>
+              <div>
+                <label className="label">Ancho máximo página (rem)</label>
+                <input className="input" type="number" min={90} max={180} value={config.websiteSettings?.pageMaxWidth ?? 112} onChange={e => setWS('pageMaxWidth', Number(e.target.value))} disabled={!isCS} />
+              </div>
+              <div>
+                <label className="label">Separación secciones (px)</label>
+                <input className="input" type="number" min={12} max={56} value={config.websiteSettings?.sectionGap ?? 28} onChange={e => setWS('sectionGap', Number(e.target.value))} disabled={!isCS} />
+              </div>
+              <div>
+                <label className="label">Radio de cards (px)</label>
+                <input className="input" type="number" min={0} max={24} value={config.websiteSettings?.cardRadius ?? 0} onChange={e => setWS('cardRadius', Number(e.target.value))} disabled={!isCS} />
+              </div>
+              <div>
+                <label className="label">Blur de cards (px)</label>
+                <input className="input" type="number" min={0} max={20} value={config.websiteSettings?.cardBlur ?? 0} onChange={e => setWS('cardBlur', Number(e.target.value))} disabled={!isCS} />
+              </div>
+              <div>
+                <label className="label">Altura imagen misión (px)</label>
+                <input className="input" type="number" min={200} max={720} value={config.websiteSettings?.missionImageHeight ?? 400} onChange={e => setWS('missionImageHeight', Number(e.target.value))} disabled={!isCS} />
+              </div>
+              <div>
+                <label className="label">Altura imagenes oposiciones (px)</label>
+                <input className="input" type="number" min={80} max={340} value={config.websiteSettings?.oposicionesImageHeight ?? 112} onChange={e => setWS('oposicionesImageHeight', Number(e.target.value))} disabled={!isCS} />
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -446,6 +511,46 @@ export default function ConfigPage() {
                   },
                 }))}
               />
+            </div>
+            <div>
+              <label className="label">Google Form ID (Oposiciones)</label>
+              <input
+                className="input"
+                value={config.oposicionesInfo?.googleFormId || ''}
+                onChange={(e) => setConfigS((p: any) => ({
+                  ...p,
+                  oposicionesInfo: {
+                    ...(p.oposicionesInfo || {}),
+                    googleFormId: e.target.value,
+                  },
+                }))}
+                placeholder="1HaC8ZxgE4dCHu57ZB9IhzGDoNsRmriDccGg3BD_kX94"
+              />
+              <p className="font-mono text-[8px] text-tx-dim mt-1">Acepta ID directo o URL completa de Google Forms.</p>
+            </div>
+            {!!config.oposicionesInfo?.googleFormId && (
+              <div className="border border-bg-border bg-bg-surface p-3">
+                <p className="font-mono text-[8px] text-tx-muted uppercase mb-2">Preview embebido</p>
+                <iframe
+                  title="Google Form Oposiciones"
+                  src={`https://docs.google.com/forms/d/e/${config.oposicionesInfo.googleFormId}/viewform?embedded=true`}
+                  className="w-full h-[360px] border border-bg-border bg-black"
+                  loading="lazy"
+                />
+                <a
+                  href={`https://docs.google.com/forms/d/e/${config.oposicionesInfo.googleFormId}/viewform`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-mono text-[9px] text-accent-blue hover:underline mt-2 inline-block"
+                >
+                  Abrir formulario en nueva pestaña
+                </a>
+              </div>
+            )}
+            <div className="border border-bg-border bg-bg-surface p-3">
+              <p className="font-mono text-[8px] text-tx-muted uppercase mb-1">Posteos públicos relacionados</p>
+              <p className="text-xs text-tx-secondary mb-2">Publica novedades desde Operativos/Informes usando la etiqueta <span className="font-mono">oposiciones</span> para mostrarlas en la web pública.</p>
+              <Link href="/dashboard/operativos" className="btn-ghost py-1.5 text-[9px] inline-flex">Ir a Publicaciones</Link>
             </div>
             <div className="flex justify-end">
               <button onClick={guardar} disabled={saving} className="btn-primary py-2">

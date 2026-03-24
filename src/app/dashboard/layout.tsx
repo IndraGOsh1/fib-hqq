@@ -8,7 +8,11 @@ import { useTheme } from '@/lib/theme-context'
 
 function isTokenExpired(token: string): boolean {
   try {
-    const payload = JSON.parse(atob(token.split('.')[1]))
+    const part = token.split('.')[1]
+    if (!part) return true
+    const b64 = part.replace(/-/g, '+').replace(/_/g, '/')
+    const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4)
+    const payload = JSON.parse(atob(padded))
     return Date.now() / 1000 > payload.exp
   } catch { return true }
 }
