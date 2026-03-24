@@ -22,6 +22,26 @@ export async function POST(req: NextRequest) {
   if (found.vetado) return err('Cuenta no disponible', 403)
   if (!await bcrypt.compare(password, found.passwordHash)) return unauthorized()
   logLogin(found.username, found.rol, ip)
-  const token = signToken({ id:found.id, username:found.username, rol:found.rol, nombre:found.nombre, agentNumber:found.agentNumber, callsign:found.callsign })
-  return NextResponse.json({ token, usuario:{ id:found.id, username:found.username, rol:found.rol, nombre:found.nombre, agentNumber:found.agentNumber, discordId:found.discordId, callsign:found.callsign } })
+  const token = signToken({
+    id: found.id,
+    username: found.username,
+    rol: found.rol,
+    nombre: found.nombre,
+    agentNumber: found.agentNumber,
+    callsign: found.callsign,
+    clases: Array.isArray(found.clases) ? found.clases : [],
+  })
+  return NextResponse.json({
+    token,
+    usuario: {
+      id: found.id,
+      username: found.username,
+      rol: found.rol,
+      nombre: found.nombre,
+      agentNumber: found.agentNumber,
+      discordId: found.discordId,
+      callsign: found.callsign,
+      clases: Array.isArray(found.clases) ? found.clases : [],
+    },
+  })
 }

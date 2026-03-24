@@ -14,6 +14,7 @@ export async function GET(req: NextRequest) {
         username: usr.username,
         callsign: usr.callsign,
         rol: usr.rol,
+        clases: Array.isArray(usr.clases) ? usr.clases : [],
         activo: usr.activo,
         vetado: !!usr.vetado,
         createdAt: usr.createdAt,

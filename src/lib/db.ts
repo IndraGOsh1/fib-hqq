@@ -15,6 +15,7 @@ export interface User {
   vetoReason?:  string | null
   vetoAt?:      string | null
   vetoBy?:      string | null
+  clases?:      string[]
 }
 
 export interface Invite {

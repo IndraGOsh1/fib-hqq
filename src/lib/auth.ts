@@ -18,6 +18,7 @@ if (process.env.NODE_ENV === 'production' && !SECRET && !global.__fibJwtSecretWa
 export interface JWTPayload {
   id: string; username: string; rol: Rol
   nombre: string | null; agentNumber: string | null; callsign: string | null
+  clases?: string[]
 }
 
 export const signToken = (p: JWTPayload) => {

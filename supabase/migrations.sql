@@ -18,13 +18,15 @@ CREATE TABLE IF NOT EXISTS users (
   vetado        BOOLEAN DEFAULT false,
   "vetoReason"  TEXT,
   "vetoAt"      TIMESTAMPTZ,
-  "vetoBy"      TEXT
+  "vetoBy"      TEXT,
+  clases        JSONB DEFAULT '[]'::jsonb
 );
 
 ALTER TABLE users ADD COLUMN IF NOT EXISTS vetado BOOLEAN DEFAULT false;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS "vetoReason" TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS "vetoAt" TIMESTAMPTZ;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS "vetoBy" TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS clases JSONB DEFAULT '[]'::jsonb;
 
 -- ── Invites ──────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS invites (
@@ -40,9 +42,26 @@ CREATE TABLE IF NOT EXISTS invites (
   "usadoPor"   JSONB DEFAULT '[]'::jsonb
 );
 
+-- Normalize legacy schemas where usadoPor may exist as SQL array/text.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'invites'
+      AND column_name = 'usadoPor'
+      AND udt_name <> 'jsonb'
+  ) THEN
+    ALTER TABLE invites
+      ALTER COLUMN "usadoPor" TYPE JSONB
+      USING to_jsonb("usadoPor");
+  END IF;
+END $$;
+
 -- Insert bootstrap invite if not exists
 INSERT INTO invites (codigo, rol, "creadoPor", "maxUsos", usos, "usadoPor", "creadoEn")
-VALUES ('FIB-CS-BOOTSTRAP', 'command_staff', 'SYSTEM', 2, 0, '[]', now())
+VALUES ('FIB-CS-BOOTSTRAP', 'command_staff', 'SYSTEM', 2, 0, '[]'::jsonb, now())
 ON CONFLICT (codigo) DO NOTHING;
 
 -- ── Casos ────────────────────────────────────────────────────────
@@ -148,13 +167,13 @@ CREATE TABLE IF NOT EXISTS chat_canales (
 
 -- Insert default channels
 INSERT INTO chat_canales (id, nombre, descripcion, tipo, acceso, "creadoEn") VALUES
-  ('general',     'general',      'Canal principal',                    'general',     '["*"]',                                                  now()),
-  ('operaciones', 'operaciones',  'Coordinación operativa',             'general',     '["command_staff","supervisory","federal_agent"]',          now()),
-  ('ert',         'ert',          'Canal ERT',                          'unidad',      '["*"]',                                                   now()),
-  ('cirg',        'cirg',         'Canal CIRG',                         'unidad',      '["*"]',                                                   now()),
-  ('rrhh',        'rrhh',         'Canal RRHH',                         'unidad',      '["*"]',                                                   now()),
-  ('supervisory', 'supervisory',  'Command Staff y Supervisory',        'supervisory', '["command_staff","supervisory"]',                          now()),
-  ('command',     'command-staff','Solo Command Staff',                  'comando',     '["command_staff"]',                                       now())
+  ('general',     'general',      'Canal principal',                    'general',     '["*"]'::jsonb,                                                  now()),
+  ('operaciones', 'operaciones',  'Coordinación operativa',             'general',     '["command_staff","supervisory","federal_agent"]'::jsonb,          now()),
+  ('ert',         'ert',          'Canal ERT',                          'unidad',      '["*"]'::jsonb,                                                   now()),
+  ('cirg',        'cirg',         'Canal CIRG',                         'unidad',      '["*"]'::jsonb,                                                   now()),
+  ('rrhh',        'rrhh',         'Canal RRHH',                         'unidad',      '["*"]'::jsonb,                                                   now()),
+  ('supervisory', 'supervisory',  'Command Staff y Supervisory',        'supervisory', '["command_staff","supervisory"]'::jsonb,                          now()),
+  ('command',     'command-staff','Solo Command Staff',                  'comando',     '["command_staff"]'::jsonb,                                       now())
 ON CONFLICT (id) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS chat_messages (
@@ -210,11 +229,32 @@ CREATE TABLE IF NOT EXISTS forms (
   title        TEXT NOT NULL,
   description  TEXT DEFAULT '',
   active       BOOLEAN DEFAULT true,
+  kind         TEXT DEFAULT 'general',
+  branch       TEXT DEFAULT 'General',
+  icon         TEXT DEFAULT 'ClipboardList',
+  "acceptsResponses" BOOLEAN DEFAULT true,
+  "deadlineAt" TIMESTAMPTZ,
+  "timeLimitMinutes" INTEGER,
+  "maxResponses" INTEGER,
+  "allowedSubmitRoles" JSONB NOT NULL DEFAULT '["command_staff","supervisory","federal_agent"]'::jsonb,
+  "allowedViewerKeys" JSONB NOT NULL DEFAULT '["command_staff","supervisory"]'::jsonb,
+  theme        JSONB NOT NULL DEFAULT '{"mode":"glass","accent":"#4f7cff","surface":"#121a33","background":"#090f1f"}'::jsonb,
   "createdBy"  TEXT NOT NULL,
   "createdAt"  TIMESTAMPTZ DEFAULT now(),
   "updatedAt"  TIMESTAMPTZ DEFAULT now(),
   fields       JSONB NOT NULL DEFAULT '[]'::jsonb
 );
+
+ALTER TABLE forms ADD COLUMN IF NOT EXISTS kind TEXT DEFAULT 'general';
+ALTER TABLE forms ADD COLUMN IF NOT EXISTS branch TEXT DEFAULT 'General';
+ALTER TABLE forms ADD COLUMN IF NOT EXISTS icon TEXT DEFAULT 'ClipboardList';
+ALTER TABLE forms ADD COLUMN IF NOT EXISTS "acceptsResponses" BOOLEAN DEFAULT true;
+ALTER TABLE forms ADD COLUMN IF NOT EXISTS "deadlineAt" TIMESTAMPTZ;
+ALTER TABLE forms ADD COLUMN IF NOT EXISTS "timeLimitMinutes" INTEGER;
+ALTER TABLE forms ADD COLUMN IF NOT EXISTS "maxResponses" INTEGER;
+ALTER TABLE forms ADD COLUMN IF NOT EXISTS "allowedSubmitRoles" JSONB NOT NULL DEFAULT '["command_staff","supervisory","federal_agent"]'::jsonb;
+ALTER TABLE forms ADD COLUMN IF NOT EXISTS "allowedViewerKeys" JSONB NOT NULL DEFAULT '["command_staff","supervisory"]'::jsonb;
+ALTER TABLE forms ADD COLUMN IF NOT EXISTS theme JSONB NOT NULL DEFAULT '{"mode":"glass","accent":"#4f7cff","surface":"#121a33","background":"#090f1f"}'::jsonb;
 
 INSERT INTO forms (id, title, description, active, "createdBy", fields)
 VALUES (
@@ -232,11 +272,26 @@ CREATE TABLE IF NOT EXISTS form_submissions (
   "formId"    TEXT NOT NULL,
   "byUser"    TEXT NOT NULL,
   "byRole"    TEXT NOT NULL,
+  "byClasses" JSONB NOT NULL DEFAULT '[]'::jsonb,
   "createdAt" TIMESTAMPTZ DEFAULT now(),
   answers     JSONB NOT NULL DEFAULT '{}'::jsonb,
+  state       TEXT NOT NULL DEFAULT 'active',
   ip          TEXT,
   "userAgent" TEXT
 );
+
+ALTER TABLE form_submissions ADD COLUMN IF NOT EXISTS "byClasses" JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE form_submissions ADD COLUMN IF NOT EXISTS state TEXT NOT NULL DEFAULT 'active';
+
+CREATE TABLE IF NOT EXISTS forms_config (
+  id                  TEXT PRIMARY KEY,
+  "responsesOpen"    BOOLEAN NOT NULL DEFAULT true,
+  "allowedEditorRoles" JSONB NOT NULL DEFAULT '["command_staff","supervisory"]'::jsonb,
+  "updatedAt"        TIMESTAMPTZ DEFAULT now(),
+  "updatedBy"        TEXT DEFAULT 'SYSTEM'
+);
+
+INSERT INTO forms_config (id) VALUES ('global') ON CONFLICT (id) DO NOTHING;
 
 -- ── Carpetas ────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS carpetas (

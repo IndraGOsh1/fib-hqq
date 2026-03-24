@@ -4,6 +4,7 @@ import { getDB, type Rol } from '@/lib/db'
 import { logKeyAction, logRegistroImportante } from '@/lib/webhook'
 
 const ROLES: Rol[] = ['command_staff', 'supervisory', 'federal_agent', 'visitante']
+const VALID_CLASSES = ['RRHH', 'CIRG', 'Task Force', 'UO', 'General']
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id:string }> }) {
   const u = getUser(req); if (!u) return unauthorized()
@@ -12,7 +13,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const db = await getDB()
   const usr = db.users.get(id); if (!usr) return notFound('Usuario no encontrado')
   if (u.rol === 'supervisory' && usr.rol === 'command_staff') return forbidden()
-  const { rol, activo, discordId, agentNumber, nombre, callsign, vetado, vetoReason } = await req.json().catch(()=>({}))
+  const { rol, activo, discordId, agentNumber, nombre, callsign, vetado, vetoReason, clases } = await req.json().catch(()=>({}))
 
   if (u.rol === 'command_staff') {
     if (rol !== undefined) {
@@ -23,10 +24,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (discordId !== undefined) usr.discordId = discordId
     if (agentNumber !== undefined) usr.agentNumber = agentNumber
     if (nombre !== undefined) usr.nombre = nombre
+    if (clases !== undefined) {
+      if (!Array.isArray(clases)) return NextResponse.json({ error: 'Clases inválidas' }, { status: 400 })
+      usr.clases = clases
+        .map((x: any) => String(x || '').trim())
+        .filter((x: string) => VALID_CLASSES.includes(x))
+        .slice(0, 6)
+    }
   }
 
   if (u.rol === 'supervisory') {
-    if (rol !== undefined || activo !== undefined || discordId !== undefined || agentNumber !== undefined || nombre !== undefined || vetado !== undefined || vetoReason !== undefined) {
+    if (rol !== undefined || activo !== undefined || discordId !== undefined || agentNumber !== undefined || nombre !== undefined || vetado !== undefined || vetoReason !== undefined || clases !== undefined) {
       return forbidden()
     }
   }
