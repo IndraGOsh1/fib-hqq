@@ -10,8 +10,7 @@ const WEBHOOKS = {
 }
 
 const ALLANAMIENTO_WEBHOOK =
-  getSecret('DISCORD_WEBHOOK_ALLANAMIENTOS') ||
-  'https://discord.com/api/webhooks/1485938225225928705/Vd-ju351vgoCjgjM01M7on9BZzWL5E3Ugb_NeoogClCaonSL04W3k9EAz4D_EZNI3S_S'
+  getSecret('DISCORD_WEBHOOK_ALLANAMIENTOS')
 
 type WebhookType = keyof typeof WEBHOOKS
 type Color = number
