@@ -485,6 +485,34 @@ export default function ConfigPage() {
               />
             </div>
             <div>
+              <label className="label">Intro del formulario (simple y claro)</label>
+              <textarea
+                className="input min-h-20"
+                value={config.oposicionesInfo?.formularioIntro || ''}
+                onChange={(e) => setConfigS((p: any) => ({
+                  ...p,
+                  oposicionesInfo: {
+                    ...(p.oposicionesInfo || {}),
+                    formularioIntro: e.target.value,
+                  },
+                }))}
+              />
+            </div>
+            <div>
+              <label className="label">Pasos del formulario (uno por línea)</label>
+              <textarea
+                className="input min-h-20"
+                value={Array.isArray(config.oposicionesInfo?.formularioPasos) ? config.oposicionesInfo.formularioPasos.join('\n') : ''}
+                onChange={(e) => setConfigS((p: any) => ({
+                  ...p,
+                  oposicionesInfo: {
+                    ...(p.oposicionesInfo || {}),
+                    formularioPasos: e.target.value.split('\n').map((x) => x.trim()).filter(Boolean),
+                  },
+                }))}
+              />
+            </div>
+            <div>
               <label className="label">Datos clave (uno por linea)</label>
               <textarea
                 className="input min-h-24"
@@ -551,6 +579,67 @@ export default function ConfigPage() {
               <p className="font-mono text-[8px] text-tx-muted uppercase mb-1">Posteos públicos relacionados</p>
               <p className="text-xs text-tx-secondary mb-2">Publica novedades desde Operativos/Informes usando la etiqueta <span className="font-mono">oposiciones</span> para mostrarlas en la web pública.</p>
               <Link href="/dashboard/operativos" className="btn-ghost py-1.5 text-[9px] inline-flex">Ir a Publicaciones</Link>
+            </div>
+
+            <div className="border border-cyan-800/40 bg-cyan-900/10 p-3">
+              <p className="font-mono text-[8px] text-cyan-300 uppercase mb-2">Comunicados (parte baja de la web)</p>
+              <div className="mb-2">
+                <label className="label">Título de sección</label>
+                <input
+                  className="input"
+                  value={config.comunicadosInfo?.titulo || ''}
+                  onChange={(e) => setConfigS((p: any) => ({
+                    ...p,
+                    comunicadosInfo: {
+                      ...(p.comunicadosInfo || {}),
+                      titulo: e.target.value,
+                    },
+                  }))}
+                />
+              </div>
+              <div className="mb-2">
+                <label className="label">Descripción de sección</label>
+                <textarea
+                  className="input min-h-16"
+                  value={config.comunicadosInfo?.descripcion || ''}
+                  onChange={(e) => setConfigS((p: any) => ({
+                    ...p,
+                    comunicadosInfo: {
+                      ...(p.comunicadosInfo || {}),
+                      descripcion: e.target.value,
+                    },
+                  }))}
+                />
+              </div>
+              <div>
+                <label className="label">Items (formato por línea: estado|titulo|detalle|enlace)</label>
+                <textarea
+                  className="input min-h-28"
+                  value={Array.isArray(config.comunicadosInfo?.items)
+                    ? config.comunicadosInfo.items.map((it: any) => `${it.estado || 'activo'}|${it.titulo || ''}|${it.detalle || ''}|${it.enlace || ''}`).join('\n')
+                    : ''}
+                  onChange={(e) => setConfigS((p: any) => ({
+                    ...p,
+                    comunicadosInfo: {
+                      ...(p.comunicadosInfo || {}),
+                      items: e.target.value
+                        .split('\n')
+                        .map((line, idx) => {
+                          const [estado = 'activo', titulo = '', detalle = '', enlace = ''] = line.split('|')
+                          return {
+                            id: `com-${idx + 1}`,
+                            estado: estado.trim(),
+                            titulo: titulo.trim(),
+                            detalle: detalle.trim(),
+                            enlace: enlace.trim(),
+                            fecha: new Date().toISOString(),
+                          }
+                        })
+                        .filter((x) => x.titulo),
+                    },
+                  }))}
+                />
+              </div>
             </div>
             <div className="flex justify-end">
               <button onClick={guardar} disabled={saving} className="btn-primary py-2">

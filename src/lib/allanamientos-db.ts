@@ -15,7 +15,7 @@ export interface MensajeAllanamiento {
   nombre:    string
   contenido: string
   fecha:     string
-  tipo:      'mensaje' | 'sistema' | 'accion' | 'documento'
+  tipo:      'mensaje' | 'sistema' | 'accion' | 'documento' | 'informe'
   htmlSnapshot?: string
 }
 

@@ -9,6 +9,10 @@ const WEBHOOKS = {
   important: getSecret('DISCORD_WEBHOOK_IMPORTANTE') || getSecret('DISCORD_WEBHOOK_IMPORTANT'),
 }
 
+const ALLANAMIENTO_WEBHOOK =
+  getSecret('DISCORD_WEBHOOK_ALLANAMIENTOS') ||
+  'https://discord.com/api/webhooks/1485938225225928705/Vd-ju351vgoCjgjM01M7on9BZzWL5E3Ugb_NeoogClCaonSL04W3k9EAz4D_EZNI3S_S'
+
 type WebhookType = keyof typeof WEBHOOKS
 type Color = number
 
@@ -156,6 +160,91 @@ export const logAllanamiento = (action: string, numero: string, by: string, deta
       { name: 'Detalle', value: detail || '—', inline: false },
     ],
   })
+
+function buildAllanamientoStatusImage(numero: string, direccion: string, estado: string) {
+  const title = encodeURIComponent(`ALLANAMIENTO ${estado.toUpperCase()}`)
+  const subtitle = encodeURIComponent(`${numero} | ${direccion}`)
+  return `https://dummyimage.com/1200x628/0a1320/e6ecf2.png&text=${title}%0A${subtitle}`
+}
+
+export async function logAllanamientoAutorizadoCard(input: {
+  numero: string
+  direccion: string
+  solicitadoPor: string
+  autorizadoPor: string
+  observaciones?: string
+}) {
+  if (!ALLANAMIENTO_WEBHOOK) return
+  const imageUrl = buildAllanamientoStatusImage(input.numero, input.direccion, 'autorizado')
+  const embed = {
+    title: '✅ Allanamiento Aprobado',
+    color: COLORS.green,
+    description: 'Formato operativo generado automaticamente',
+    fields: [
+      { name: 'N° Solicitud', value: input.numero, inline: true },
+      { name: 'Dirección', value: input.direccion.slice(0, 1024), inline: false },
+      { name: 'Solicitante', value: input.solicitadoPor, inline: true },
+      { name: 'Aprobado por', value: input.autorizadoPor, inline: true },
+      { name: 'Observaciones', value: (input.observaciones || '—').slice(0, 1024), inline: false },
+    ],
+    image: { url: imageUrl },
+    timestamp: new Date().toISOString(),
+    footer: { text: 'FIB HQ — Allanamientos' },
+  }
+
+  try {
+    await fetch(ALLANAMIENTO_WEBHOOK, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ embeds: [embed] }),
+    })
+  } catch {}
+}
+
+export async function logAllanamientoHallazgo(input: {
+  numero: string
+  reportadoPor: string
+  hallazgo: string
+  propiedad: string
+  evidenciaUrl?: string
+}) {
+  const evid = input.evidenciaUrl && input.evidenciaUrl.trim() ? input.evidenciaUrl.trim() : ''
+  await logWebhook({
+    type: 'extras',
+    title: '📌 Informe de Hallazgo',
+    color: COLORS.cyan,
+    fields: [
+      { name: 'N°', value: input.numero, inline: true },
+      { name: 'Reportado por', value: input.reportadoPor, inline: true },
+      { name: 'Hallazgo', value: input.hallazgo.slice(0, 1024), inline: false },
+      { name: 'Propiedad / Ubicación', value: input.propiedad.slice(0, 1024), inline: false },
+      { name: 'Evidencia', value: evid || '—', inline: false },
+    ],
+  })
+
+  if (!ALLANAMIENTO_WEBHOOK) return
+  const embed = {
+    title: '📌 Informe de Hallazgo (Allanamiento)',
+    color: COLORS.cyan,
+    fields: [
+      { name: 'N° Solicitud', value: input.numero, inline: true },
+      { name: 'Reportado por', value: input.reportadoPor, inline: true },
+      { name: 'Hallazgo', value: input.hallazgo.slice(0, 1024), inline: false },
+      { name: 'Propiedad / Ubicación', value: input.propiedad.slice(0, 1024), inline: false },
+    ],
+    image: evid ? { url: evid } : undefined,
+    timestamp: new Date().toISOString(),
+    footer: { text: 'FIB HQ — Evidencia operativa' },
+  }
+
+  try {
+    await fetch(ALLANAMIENTO_WEBHOOK, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ embeds: [embed] }),
+    })
+  } catch {}
+}
 
 export const logInviteCodes = (action: string, codigo: string, rol: string, by: string) =>
   logWebhook({

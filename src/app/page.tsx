@@ -83,14 +83,28 @@ type LandingConfig = {
     datos?: string[]
     imagenes?: string[]
     googleFormId?: string
+    formularioIntro?: string
+    formularioPasos?: string[]
+  }
+  comunicadosInfo?: {
+    titulo?: string
+    descripcion?: string
+    items?: Array<{
+      id?: string
+      estado?: string
+      titulo?: string
+      detalle?: string
+      enlace?: string
+      fecha?: string
+    }>
   }
 }
 
 type OposicionPost = {
   id: string
   titulo: string
-  descripcion?: string
   creadoEn: string
+  descripcion?: string
   nombreAutor?: string
   tags?: string[]
 }
@@ -165,6 +179,9 @@ export default function Home() {
   const divisionName = config.nombreDivision || 'Federal Investigation Bureau'
   const heroTitle = config.textoHero || 'Federal Investigation Bureau'
   const heroSubtitle = config.textoSubhero || 'Sistema centralizado de gestión operativa'
+  const comunicados = config.comunicadosInfo || {}
+  const comunicadosItems = Array.isArray(comunicados.items) ? comunicados.items : []
+  const formSteps = Array.isArray(oposInfo.formularioPasos) ? oposInfo.formularioPasos : []
 
   return (
     <main className="min-h-screen bg-bg-base" style={{ backgroundImage: 'radial-gradient(circle at 12% 18%, rgba(27,111,255,0.10), transparent 35%), radial-gradient(circle at 88% 82%, rgba(0,196,255,0.08), transparent 35%)' }}>
@@ -342,6 +359,16 @@ export default function Home() {
           <div className="card p-6" style={cardStyle}>
             <span className="section-tag">// Google Forms</span>
             <h4 className="font-display text-sm font-semibold tracking-wider uppercase text-tx-primary mt-3 mb-2">Postulación de Oposiciones</h4>
+            <div className="mb-3 border border-bg-border bg-bg-surface p-3">
+              <p className="text-xs text-tx-secondary">{oposInfo.formularioIntro || 'Formulario simplificado: completa tus datos y envia una sola vez.'}</p>
+              {formSteps.length > 0 && (
+                <div className="mt-2 space-y-1">
+                  {formSteps.map((s, idx) => (
+                    <p key={`${s}-${idx}`} className="font-mono text-[10px] text-tx-muted">{idx + 1}. {s}</p>
+                  ))}
+                </div>
+              )}
+            </div>
             <iframe
               title="Formulario de Oposiciones"
               src={googleFormEmbedUrl}
@@ -365,6 +392,39 @@ export default function Home() {
                 ))}
               </div>
             </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="px-6 bg-bg-surface/30" style={{ paddingTop: compactSectionPadding, paddingBottom: compactSectionPadding }}>
+        <div className="mx-auto" style={maxWidthStyle}>
+          <div className="mb-6">
+            <span className="section-tag">// Estado y Comunicados</span>
+            <div className="divider" />
+            <h2 className="font-display text-2xl font-semibold tracking-wider uppercase text-tx-primary">{comunicados.titulo || 'Comunicados y Estado Operativo'}</h2>
+            <p className="text-xs text-tx-secondary mt-1">{comunicados.descripcion || 'Actualizaciones oficiales de la división y estado de procesos.'}</p>
+          </div>
+          <div className="grid md:grid-cols-2 gap-3">
+            {comunicadosItems.length === 0 && (
+              <div className="card p-4" style={cardStyle}>
+                <p className="text-xs text-tx-muted">Sin comunicados activos por el momento.</p>
+              </div>
+            )}
+            {comunicadosItems.map((it, idx) => (
+              <div key={`${it.id || idx}`} className="card p-4" style={cardStyle}>
+                <div className="flex items-center justify-between gap-3">
+                  <p className="font-display text-xs tracking-wider uppercase text-tx-primary">{it.titulo || 'Comunicado'}</p>
+                  <span className="tag border-cyan-700 text-cyan-300">{(it.estado || 'activo').toUpperCase()}</span>
+                </div>
+                <p className="text-xs text-tx-secondary mt-2">{it.detalle || 'Sin detalle'}</p>
+                <div className="flex items-center justify-between mt-3">
+                  <p className="font-mono text-[9px] text-tx-muted">{it.fecha ? new Date(it.fecha).toLocaleDateString('es') : ''}</p>
+                  {it.enlace && (
+                    <a href={it.enlace} target="_blank" rel="noreferrer" className="font-mono text-[9px] text-accent-blue hover:underline">Ver más</a>
+                  )}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       </section>

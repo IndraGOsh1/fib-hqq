@@ -3,7 +3,7 @@ import { v4 as uuid } from 'uuid'
 import { getUser, unauthorized, forbidden, notFound, err } from '@/lib/auth'
 import { getAllanamientosDB, type Firma } from '@/lib/allanamientos-db'
 import { getDB } from '@/lib/db'
-import { logAllanamiento } from '@/lib/webhook'
+import { logAllanamiento, logAllanamientoAutorizadoCard, logAllanamientoHallazgo } from '@/lib/webhook'
 
 type P = { params: Promise<{id:string}> }
 
@@ -54,6 +54,13 @@ export async function PATCH(req: NextRequest, { params }:P) {
       a.observaciones = observaciones
     }
     logAllanamiento('Autorizado', a.numeroSolicitud, u.username)
+    await logAllanamientoAutorizadoCard({
+      numero: a.numeroSolicitud,
+      direccion: a.direccion,
+      solicitadoPor: a.nombreSolicitante,
+      autorizadoPor: u.nombre || u.username,
+      observaciones: a.observaciones,
+    })
   }
 
   if (accion === 'denegar' && isSuperv) {
@@ -97,7 +104,48 @@ export async function PATCH(req: NextRequest, { params }:P) {
     })
   }
 
-  if (accion && !['autorizar', 'denegar', 'ejecutar', 'firmar', 'generar_pdf'].includes(accion)) {
+  if (accion === 'reporte_hallazgo') {
+    const canReport = isSuperv || a.solicitadoPor === u.username
+    if (!canReport) return forbidden()
+
+    const hallazgo = String(body.hallazgo || '').trim()
+    const propiedad = String(body.propiedad || '').trim()
+    const evidenciaUrl = String(body.evidenciaUrl || '').trim()
+    if (!hallazgo || !propiedad) return err('hallazgo y propiedad son requeridos')
+    if (hallazgo.length > 1200 || propiedad.length > 600) return err('Texto demasiado largo en informe')
+
+    if (evidenciaUrl) {
+      const isValidUrl = /^https?:\/\//i.test(evidenciaUrl)
+      const maybeImage = /(imgur\.com|\.png($|\?)|\.jpg($|\?)|\.jpeg($|\?)|\.webp($|\?))/i.test(evidenciaUrl)
+      if (!isValidUrl || !maybeImage) return err('Evidencia invalida. Usa URL de imagen (Imgur/PNG/JPG)')
+    }
+
+    const contenido = [
+      '📌 Informe de Hallazgo',
+      `Hallazgo: ${hallazgo}`,
+      `Propiedad/Ubicación: ${propiedad}`,
+      evidenciaUrl ? `Evidencia: ${evidenciaUrl}` : 'Evidencia: —',
+    ].join('\n')
+
+    a.mensajes.push({
+      id: uuid().slice(0, 8),
+      autor: u.username,
+      nombre: u.nombre || u.username,
+      contenido,
+      fecha: now,
+      tipo: 'informe',
+    })
+
+    await logAllanamientoHallazgo({
+      numero: a.numeroSolicitud,
+      reportadoPor: u.nombre || u.username,
+      hallazgo,
+      propiedad,
+      evidenciaUrl,
+    })
+  }
+
+  if (accion && !['autorizar', 'denegar', 'ejecutar', 'firmar', 'generar_pdf', 'reporte_hallazgo'].includes(accion)) {
     return err('Accion invalida')
   }
 

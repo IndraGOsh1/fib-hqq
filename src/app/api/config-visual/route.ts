@@ -20,6 +20,33 @@ function sanitizeOposicionesInfo(raw: any) {
     datos,
     imagenes,
     googleFormId: normalizedGoogleFormId,
+    formularioIntro: String(source.formularioIntro || '').trim().slice(0, 1200),
+    formularioPasos: Array.isArray(source.formularioPasos)
+      ? source.formularioPasos.map((x: any) => String(x || '').trim().slice(0, 180)).filter(Boolean).slice(0, 8)
+      : [],
+  }
+}
+
+function sanitizeComunicadosInfo(raw: any) {
+  const source = raw && typeof raw === 'object' ? raw : {}
+  const items = Array.isArray(source.items)
+    ? source.items
+      .map((it: any, idx: number) => ({
+        id: String(it?.id || `com-${idx + 1}`).trim().slice(0, 40),
+        estado: String(it?.estado || 'activo').trim().slice(0, 40),
+        titulo: String(it?.titulo || '').trim().slice(0, 140),
+        detalle: String(it?.detalle || '').trim().slice(0, 1400),
+        enlace: String(it?.enlace || '').trim().slice(0, 2000),
+        fecha: it?.fecha ? new Date(it.fecha).toISOString() : new Date().toISOString(),
+      }))
+      .filter((x: any) => x.titulo)
+      .slice(0, 12)
+    : []
+
+  return {
+    titulo: String(source.titulo || 'Comunicados y Estado Operativo').trim().slice(0, 140),
+    descripcion: String(source.descripcion || '').trim().slice(0, 1400),
+    items,
   }
 }
 
@@ -64,10 +91,15 @@ export async function PATCH(req: NextRequest) {
     delete next.textoMision
     delete next.descripcionDivision
     delete next.oposicionesInfo
+    delete next.comunicadosInfo
   }
 
   if (next.oposicionesInfo !== undefined) {
     next.oposicionesInfo = sanitizeOposicionesInfo(next.oposicionesInfo)
+  }
+
+  if (next.comunicadosInfo !== undefined) {
+    next.comunicadosInfo = sanitizeComunicadosInfo(next.comunicadosInfo)
   }
 
   if (next.websiteSettings !== undefined) {

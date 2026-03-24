@@ -21,6 +21,20 @@ export interface ConfigVisual {
     datos: string[]
     imagenes: string[]
     googleFormId: string
+    formularioIntro: string
+    formularioPasos: string[]
+  }
+  comunicadosInfo: {
+    titulo: string
+    descripcion: string
+    items: Array<{
+      id: string
+      estado: string
+      titulo: string
+      detalle: string
+      enlace: string
+      fecha: string
+    }>
   }
   websiteSettings: {
     enableAnimations: boolean
@@ -65,6 +79,22 @@ const DEFAULT: ConfigVisual = {
     datos: ['Convocatoria abierta por periodos', 'Requiere cuenta activa', 'Un envio por usuario o IP'],
     imagenes: ['https://i.imgur.com/7NxeszI.png'],
     googleFormId: '1HaC8ZxgE4dCHu57ZB9IhzGDoNsRmriDccGg3BD_kX94',
+    formularioIntro: 'Completa el formulario de forma simple y en un solo envio. Adjunta evidencia solo cuando se solicite.',
+    formularioPasos: ['Lee los requisitos', 'Completa datos personales', 'Revisa respuestas antes de enviar'],
+  },
+  comunicadosInfo: {
+    titulo: 'Comunicados y Estado Operativo',
+    descripcion: 'Actualizaciones institucionales y estado de convocatorias.',
+    items: [
+      {
+        id: 'com-1',
+        estado: 'activo',
+        titulo: 'Convocatoria de Oposiciones',
+        detalle: 'Se habilita periodo de inscripcion para nuevos aspirantes.',
+        enlace: '',
+        fecha: new Date().toISOString(),
+      },
+    ],
   },
   websiteSettings: {
     enableAnimations: true,

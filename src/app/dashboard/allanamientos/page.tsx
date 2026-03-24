@@ -66,6 +66,9 @@ function ModalAllanamiento({ itemId, user, onClose, onAction }: { itemId:string;
   const [mensaje, setMensaje] = useState('')
   const [motivo,  setMotivo]  = useState('')
   const [sending, setSending] = useState(false)
+  const [hallazgo, setHallazgo] = useState('')
+  const [propiedad, setPropiedad] = useState('')
+  const [evidenciaUrl, setEvidenciaUrl] = useState('')
   const [tab,     setTab]     = useState<'info'|'chat'|'pdf'>('info')
   const bottomRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -98,6 +101,29 @@ function ModalAllanamiento({ itemId, user, onClose, onAction }: { itemId:string;
     e.preventDefault(); if (!mensaje.trim()) return; setSending(true)
     try { await editarAllanamiento(itemId,{mensaje:mensaje.trim()}); setMensaje(''); await load() }
     catch(e:any) { alert(e.message) } finally { setSending(false) }
+  }
+
+  async function enviarReporteHallazgo(e: React.FormEvent) {
+    e.preventDefault()
+    if (!hallazgo.trim() || !propiedad.trim()) return
+    setSending(true)
+    try {
+      await editarAllanamiento(itemId, {
+        accion: 'reporte_hallazgo',
+        hallazgo: hallazgo.trim(),
+        propiedad: propiedad.trim(),
+        evidenciaUrl: evidenciaUrl.trim(),
+      })
+      setHallazgo('')
+      setPropiedad('')
+      setEvidenciaUrl('')
+      await load()
+      onAction('Informe de hallazgo registrado')
+    } catch (e: any) {
+      alert(e.message)
+    } finally {
+      setSending(false)
+    }
   }
 
   function imprimirPDF() {
@@ -258,6 +284,12 @@ ${item.firmas?.length===0?`
                     <div className="font-mono text-[8px] text-tx-muted italic py-0.5 px-3 bg-bg-surface border border-bg-border flex items-center gap-2">
                       <span>{m.contenido}</span>
                     </div>
+                  ) : m.tipo === 'informe' ? (
+                    <div className="w-full border border-cyan-800/50 bg-cyan-900/10 p-3">
+                      <p className="font-mono text-[8px] uppercase tracking-widest text-cyan-400 mb-1">Informe de Hallazgo</p>
+                      <p className="text-xs text-tx-primary whitespace-pre-wrap">{m.contenido}</p>
+                      <p className="font-mono text-[8px] text-tx-muted mt-2">{m.nombre} · {new Date(m.fecha).toLocaleString('es')}</p>
+                    </div>
                   ) : (
                     <>
                       <div className={`w-7 h-7 flex items-center justify-center shrink-0 ${m.autor===user?.username?'bg-accent-blue/20 border-accent-blue/30':'bg-bg-surface border-bg-border'} border`}>
@@ -279,10 +311,20 @@ ${item.firmas?.length===0?`
               <div ref={bottomRef}/>
             </div>
             {canChat && (
-              <form onSubmit={enviarMensaje} className="px-4 py-3 border-t border-bg-border flex gap-2 shrink-0">
-                <input className="input flex-1 text-sm py-2" value={mensaje} onChange={e=>setMensaje(e.target.value)} placeholder="Escribe un mensaje..." disabled={sending}/>
-                <button type="submit" disabled={sending||!mensaje.trim()} className="btn-primary py-2 px-3 disabled:opacity-30"><Send size={13}/></button>
-              </form>
+              <div className="px-4 py-3 border-t border-bg-border shrink-0 flex flex-col gap-3">
+                <form onSubmit={enviarMensaje} className="flex gap-2">
+                  <input className="input flex-1 text-sm py-2" value={mensaje} onChange={e=>setMensaje(e.target.value)} placeholder="Escribe un mensaje..." disabled={sending}/>
+                  <button type="submit" disabled={sending||!mensaje.trim()} className="btn-primary py-2 px-3 disabled:opacity-30"><Send size={13}/></button>
+                </form>
+
+                <form onSubmit={enviarReporteHallazgo} className="border border-bg-border bg-bg-surface p-3 flex flex-col gap-2">
+                  <p className="font-mono text-[8px] uppercase tracking-widest text-accent-cyan">Informe de captura / hallazgo</p>
+                  <input className="input text-xs py-2" value={hallazgo} onChange={e=>setHallazgo(e.target.value)} placeholder="Que se encontro (armas, dinero, documentos...)" disabled={sending} />
+                  <input className="input text-xs py-2" value={propiedad} onChange={e=>setPropiedad(e.target.value)} placeholder="Propiedad o ubicacion asociada" disabled={sending} />
+                  <input className="input text-xs py-2" value={evidenciaUrl} onChange={e=>setEvidenciaUrl(e.target.value)} placeholder="URL evidencia (Imgur o PNG/JPG)" disabled={sending} />
+                  <button type="submit" disabled={sending || !hallazgo.trim() || !propiedad.trim()} className="btn-ghost py-2 text-[10px]">Registrar informe</button>
+                </form>
+              </div>
             )}
             {!canChat && (
               <div className="px-4 py-3 border-t border-bg-border">
