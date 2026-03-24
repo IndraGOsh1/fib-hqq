@@ -13,7 +13,7 @@ function getClient() {
   return _client
 }
 
-export class SupabaseMap<K extends string, V extends Record<string, any>> implements Map<string, V> {
+export class SupabaseMap<K extends string, V extends Record<string, any>> {
   private table: string
   private pkField: K
   private cache: Map<string, V>
@@ -54,15 +54,18 @@ export class SupabaseMap<K extends string, V extends Record<string, any>> implem
   }
 
   get size() { return this.cache.size }
-
-  has(key: string): boolean { return this.cache.has(key) }
-
-  get(key: string): V | undefined { return this.cache.get(key) }
+  has(key: string)            { return this.cache.has(key) }
+  get(key: string)            { return this.cache.get(key) }
+  keys()                      { return this.cache.keys() }
+  values()                    { return this.cache.values() }
+  entries()                   { return this.cache.entries() }
+  forEach(cb: (value: V, key: string, map: Map<string, V>) => void) { this.cache.forEach(cb as any) }
+  [Symbol.iterator]()         { return this.cache[Symbol.iterator]() }
+  get [Symbol.toStringTag]()  { return 'SupabaseMap' }
 
   set(key: string, value: V): this {
     this.cache.set(key, value)
-    const client = getClient()
-    ;(client.from(this.table) as any).upsert(value as any).then(({ error }: any) => {
+    ;(getClient().from(this.table) as any).upsert(value as any).then(({ error }: any) => {
       if (error) console.error(`[SupabaseMap] upsert error on ${this.table}:`, error.message)
     })
     return this
@@ -71,8 +74,7 @@ export class SupabaseMap<K extends string, V extends Record<string, any>> implem
   delete(key: string): boolean {
     const existed = this.cache.delete(key)
     if (existed) {
-      const client = getClient()
-      ;(client.from(this.table) as any).delete().eq(this.pkField, key).then(({ error }: any) => {
+      ;(getClient().from(this.table) as any).delete().eq(this.pkField, key).then(({ error }: any) => {
         if (error) console.error(`[SupabaseMap] delete error on ${this.table}:`, error.message)
       })
     }
@@ -81,20 +83,8 @@ export class SupabaseMap<K extends string, V extends Record<string, any>> implem
 
   clear(): void {
     this.cache.clear()
-    const client = getClient()
-    ;(client.from(this.table) as any).delete().neq(this.pkField, '').then(({ error }: any) => {
+    ;(getClient().from(this.table) as any).delete().neq(this.pkField, '').then(({ error }: any) => {
       if (error) console.error(`[SupabaseMap] clear error on ${this.table}:`, error.message)
     })
   }
-
-  forEach(cb: (value: V, key: string, map: Map<string, V>) => void): void {
-    this.cache.forEach(cb as any)
-  }
-
-  keys():   IterableIterator<string>       { return this.cache.keys() }
-  values(): IterableIterator<V>            { return this.cache.values() }
-  entries(): IterableIterator<[string, V]> { return this.cache.entries() }
-
-  [Symbol.iterator](): IterableIterator<[string, V]> { return this.cache[Symbol.iterator]() }
-  get [Symbol.toStringTag]() { return 'SupabaseMap' }
 }
