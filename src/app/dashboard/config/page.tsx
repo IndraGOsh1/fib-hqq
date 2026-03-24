@@ -1,9 +1,9 @@
 'use client'
-import { useEffect, useState, useRef, useCallback } from 'react'
-import { Save, RefreshCw, CheckCircle, AlertCircle, RotateCcw, Palette, Image, Type, Bell, Key, Users, Globe, Edit3, Eye, X } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Save, RefreshCw, CheckCircle, AlertCircle, RotateCcw, Palette, Image, Type, Bell, Key, Users, Globe, Edit3, Eye, X, Shield } from 'lucide-react'
 import { getConfigVisual, setConfigVisual, resetConfigVisual, getInvites, crearInvite, borrarInvite } from '@/lib/client'
 
-type Tab = 'identidad'|'colores'|'fondos'|'banner'|'website'|'invitaciones'
+type Tab = 'identidad'|'colores'|'fondos'|'banner'|'website'|'invitaciones'|'indra'
 
 function Toast({ msg, ok, onClose }:{msg:string;ok:boolean;onClose:()=>void}) {
   useEffect(()=>{ const t=setTimeout(onClose,3000);return()=>clearTimeout(t) },[])
@@ -125,6 +125,7 @@ export default function ConfigPage() {
 
   const isCS    = user?.rol === 'command_staff'
   const isSuperv= ['command_staff','supervisory'].includes(user?.rol)
+  const isIndra = isCS && String(user?.username || '').toLowerCase() === 'indra'
 
   useEffect(()=>{ const u=localStorage.getItem('fib_user'); if(u) setUser(JSON.parse(u)) },[])
   useEffect(()=>{
@@ -175,7 +176,7 @@ export default function ConfigPage() {
   return (
     <div className="max-w-4xl mx-auto">
       {toast && <Toast msg={toast.msg} ok={toast.ok} onClose={()=>setToast(null)}/>}
-      {showMisionEditor && isCS && (
+      {showMisionEditor && isIndra && (
         <MisionEditor config={config} onSave={guardarParcial} onClose={() => setShowMisionEditor(false)} />
       )}
 
@@ -195,7 +196,7 @@ export default function ConfigPage() {
       {!isCS && <div className="card p-3 mb-5 border-yellow-800/40 bg-yellow-900/10"><p className="font-mono text-xs text-yellow-400">Solo Command Staff puede modificar la configuración global.</p></div>}
 
       {/* Quick action — Misión y Valores */}
-      {isCS && (
+      {isIndra && (
         <div className="card p-4 mb-5 flex items-center justify-between">
           <div>
             <p className="font-mono text-[9px] uppercase tracking-widest text-accent-blue mb-0.5">Edición rápida</p>
@@ -209,7 +210,7 @@ export default function ConfigPage() {
       )}
 
       <div className="flex border-b border-bg-border mb-5 overflow-x-auto">
-        {TABS.map(t=>(
+        {(isIndra ? [...TABS, {id:'indra' as Tab, icon:Shield, label:'Indra'}] : TABS).map(t=>(
           <button key={t.id} onClick={()=>setTab(t.id)}
             className={`flex items-center gap-1.5 px-4 py-2.5 font-mono text-[9px] tracking-widest uppercase transition-all border-b-2 -mb-px whitespace-nowrap ${tab===t.id?'border-accent-blue text-accent-blue':'border-transparent text-tx-muted hover:text-tx-secondary'}`}>
             <t.icon size={11}/>{t.label}
@@ -226,14 +227,15 @@ export default function ConfigPage() {
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="label mb-0">Descripción / Misión</label>
-                {isCS && (
+                {isIndra && (
                   <button onClick={() => setShowMisionEditor(true)} className="flex items-center gap-1 font-mono text-[8px] uppercase text-accent-blue hover:text-accent-blue/80 transition-colors">
                     <Edit3 size={9}/> Editar en vivo
                   </button>
                 )}
               </div>
-              <textarea className="input min-h-20 resize-none text-sm" value={config.descripcionDivision||''} onChange={setE('descripcionDivision')} disabled={!isCS}
+              <textarea className="input min-h-20 resize-none text-sm" value={config.descripcionDivision||''} onChange={setE('descripcionDivision')} disabled={!isIndra}
                 placeholder="Descripción visible en la página pública..."/>
+              {!isIndra && <p className="font-mono text-[8px] text-yellow-400 mt-1">Solo indra puede editar esta zona.</p>}
             </div>
             <div>
               <label className="label">URL del Logo</label>
@@ -315,7 +317,7 @@ export default function ConfigPage() {
           <div className="card p-5 flex flex-col gap-4">
             <div className="flex items-center justify-between">
               <span className="section-tag">// Textos de la Página Pública</span>
-              {isCS && (
+              {isIndra && (
                 <button onClick={() => setShowMisionEditor(true)} className="flex items-center gap-1 font-mono text-[8px] uppercase text-accent-blue hover:text-accent-blue/80 transition-colors border border-accent-blue/30 px-2 py-1">
                   <Edit3 size={9}/> Misión (edición en vivo)
                 </button>
@@ -386,6 +388,70 @@ export default function ConfigPage() {
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {tab==='indra' && isIndra && (
+        <div className="flex flex-col gap-4">
+          <div className="card p-5 flex flex-col gap-4 border-cyan-700/40">
+            <span className="section-tag">// Panel Exclusivo de indra</span>
+            <p className="text-xs text-tx-secondary">Control de la seccion publica de Mision y Oposiciones.</p>
+            <div>
+              <label className="label">Titulo de Oposiciones</label>
+              <input
+                className="input"
+                value={config.oposicionesInfo?.titulo || ''}
+                onChange={(e) => setConfigS((p: any) => ({
+                  ...p,
+                  oposicionesInfo: { ...(p.oposicionesInfo || {}), titulo: e.target.value },
+                }))}
+              />
+            </div>
+            <div>
+              <label className="label">Descripcion de Oposiciones</label>
+              <textarea
+                className="input min-h-24"
+                value={config.oposicionesInfo?.descripcion || ''}
+                onChange={(e) => setConfigS((p: any) => ({
+                  ...p,
+                  oposicionesInfo: { ...(p.oposicionesInfo || {}), descripcion: e.target.value },
+                }))}
+              />
+            </div>
+            <div>
+              <label className="label">Datos clave (uno por linea)</label>
+              <textarea
+                className="input min-h-24"
+                value={Array.isArray(config.oposicionesInfo?.datos) ? config.oposicionesInfo.datos.join('\n') : ''}
+                onChange={(e) => setConfigS((p: any) => ({
+                  ...p,
+                  oposicionesInfo: {
+                    ...(p.oposicionesInfo || {}),
+                    datos: e.target.value.split('\n').map((x) => x.trim()).filter(Boolean),
+                  },
+                }))}
+              />
+            </div>
+            <div>
+              <label className="label">Imagenes (URL, una por linea)</label>
+              <textarea
+                className="input min-h-24"
+                value={Array.isArray(config.oposicionesInfo?.imagenes) ? config.oposicionesInfo.imagenes.join('\n') : ''}
+                onChange={(e) => setConfigS((p: any) => ({
+                  ...p,
+                  oposicionesInfo: {
+                    ...(p.oposicionesInfo || {}),
+                    imagenes: e.target.value.split('\n').map((x) => x.trim()).filter(Boolean),
+                  },
+                }))}
+              />
+            </div>
+            <div className="flex justify-end">
+              <button onClick={guardar} disabled={saving} className="btn-primary py-2">
+                <Save size={12} />{saving ? 'Guardando...' : 'Guardar panel indra'}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -216,10 +216,15 @@ CREATE TABLE IF NOT EXISTS config_visual (
   "textoHero"           TEXT DEFAULT 'Federal Investigation Bureau',
   "textoSubhero"        TEXT DEFAULT 'Sistema centralizado de gestión operativa',
   "textoMision"         TEXT DEFAULT 'Proteger la integridad del estado de derecho.',
+  "oposicionesInfo"     JSONB DEFAULT '{"titulo":"Oposiciones","descripcion":"Proceso de oposiciones para ingreso y asignacion de perfiles en la division.","datos":["Convocatoria abierta por periodos","Requiere cuenta activa","Un envio por usuario o IP"],"imagenes":["https://i.imgur.com/7NxeszI.png"]}'::jsonb,
+  "indraRecoveryUsedAt" TIMESTAMPTZ,
   "divisionesInfo"      JSONB DEFAULT '[{"nombre":"CIRG","descripcion":"Critical Incident Response Group","logoUrl":"https://i.imgur.com/QKAp6O1.png"},{"nombre":"ERT","descripcion":"Evidence Response Team","logoUrl":"https://i.imgur.com/IemqOQh.png"},{"nombre":"RRHH","descripcion":"Recursos Humanos","logoUrl":"https://i.imgur.com/z5NiemF.png"}]'::jsonb,
   "actualizadoPor"      TEXT DEFAULT 'SYSTEM',
   "actualizadoEn"       TIMESTAMPTZ DEFAULT now()
 );
+
+ALTER TABLE config_visual ADD COLUMN IF NOT EXISTS "oposicionesInfo" JSONB DEFAULT '{"titulo":"Oposiciones","descripcion":"Proceso de oposiciones para ingreso y asignacion de perfiles en la division.","datos":["Convocatoria abierta por periodos","Requiere cuenta activa","Un envio por usuario o IP"],"imagenes":["https://i.imgur.com/7NxeszI.png"]}'::jsonb;
+ALTER TABLE config_visual ADD COLUMN IF NOT EXISTS "indraRecoveryUsedAt" TIMESTAMPTZ;
 
 INSERT INTO config_visual (id) VALUES ('singleton') ON CONFLICT (id) DO NOTHING;
 
@@ -282,6 +287,15 @@ CREATE TABLE IF NOT EXISTS form_submissions (
 
 ALTER TABLE form_submissions ADD COLUMN IF NOT EXISTS "byClasses" JSONB NOT NULL DEFAULT '[]'::jsonb;
 ALTER TABLE form_submissions ADD COLUMN IF NOT EXISTS state TEXT NOT NULL DEFAULT 'active';
+
+-- Restricciones para oposiciones: un envio activo por usuario o IP por formulario.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_form_submissions_oposicion_user_once
+ON form_submissions ("formId", "byUser")
+WHERE state <> 'removed' AND "formId" IN (SELECT id FROM forms WHERE kind = 'oposicion');
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_form_submissions_oposicion_ip_once
+ON form_submissions ("formId", ip)
+WHERE state <> 'removed' AND ip IS NOT NULL AND ip <> '' AND "formId" IN (SELECT id FROM forms WHERE kind = 'oposicion');
 
 CREATE TABLE IF NOT EXISTS forms_config (
   id                  TEXT PRIMARY KEY,

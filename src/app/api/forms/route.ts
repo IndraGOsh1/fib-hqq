@@ -91,7 +91,8 @@ export async function GET(req: NextRequest) {
     if (!f.active) return canManage(u.rol)
     if (!f.acceptsResponses && !canManage(u.rol)) return false
     if (f.kind === 'oposicion') {
-      return keys.has('RRHH') || keys.has('command_staff')
+      const roleAllowed = Array.isArray(f.allowedSubmitRoles) && f.allowedSubmitRoles.includes(u.rol)
+      return roleAllowed || keys.has('RRHH') || keys.has('command_staff')
     }
     return true
   })

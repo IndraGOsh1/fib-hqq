@@ -30,9 +30,18 @@ export async function POST(req: NextRequest, { params }: P) {
 
   const classes = Array.isArray(u.clases) ? u.clases : []
   const roleAllowed = Array.isArray(form.allowedSubmitRoles) && form.allowedSubmitRoles.includes(u.rol)
-  const isRRHH = classes.includes('RRHH') || u.rol === 'command_staff'
-  if (form.kind === 'oposicion' && !isRRHH) return err('Sin permisos para responder este formulario', 403)
   if (!roleAllowed) return err('Sin permisos para responder este formulario', 403)
+
+  if (form.kind === 'oposicion') {
+    const active = Array.from(db.submissions.values()).filter((s) => s.formId === id && s.state !== 'removed')
+    const existsByUser = active.some((s) => s.byUser === u.username)
+    if (existsByUser) return err('Ya enviaste una respuesta para esta oposicion', 409)
+    const normalizedIp = String(ip || '').trim()
+    if (normalizedIp) {
+      const existsByIp = active.some((s) => String(s.ip || '').trim() === normalizedIp)
+      if (existsByIp) return err('Ya existe un envio para esta oposicion desde esta IP', 409)
+    }
+  }
 
   if (form.deadlineAt) {
     const deadline = new Date(form.deadlineAt).getTime()

@@ -43,12 +43,13 @@ export async function POST(req: NextRequest) {
     vetoReason:null,
     vetoAt:null,
     vetoBy:null,
+    clases: [],
   }
   db.users.set(id, user)
   await getCarpeta(user.username)
   inv.usos++; inv.usadoPor.push(normalizedUsername)
   db.invites.set(inv.codigo, inv)
   logRegister(user.username, user.rol, inv.codigo)
-  const token = signToken({ id, username:user.username, rol:user.rol, nombre:user.nombre, agentNumber:user.agentNumber, callsign:null })
-  return NextResponse.json({ token, usuario:{ id, username:user.username, rol:user.rol, nombre:user.nombre, agentNumber:user.agentNumber, callsign:null } }, { status:201 })
+  const token = signToken({ id, username:user.username, rol:user.rol, nombre:user.nombre, agentNumber:user.agentNumber, callsign:null, clases: [] })
+  return NextResponse.json({ token, usuario:{ id, username:user.username, rol:user.rol, nombre:user.nombre, agentNumber:user.agentNumber, callsign:null, clases: [] } }, { status:201 })
 }

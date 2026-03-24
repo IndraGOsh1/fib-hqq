@@ -5,7 +5,7 @@ export const CONFIG = {
 
   rangos: {
     'Command Staff':     ['Director', 'Sub Director'],
-    'Jefatura':          ['Coordinador', 'Jefe de Personal'],
+    'In charge Agents':  ['Coordinador', 'Jefe de Personal'],
     'Supervisory':       ['Supervisor', 'Special Agent Senior'],
     'Agentes Federales': ['Special Agent III', 'Special Agent II', 'Special Agent I', 'Training Agent'],
   } as Record<string, string[]>,

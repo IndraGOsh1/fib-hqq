@@ -1,7 +1,7 @@
 'use client'
 import Image from 'next/image'
 import Link from 'next/link'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Lock, User, Key, AlertCircle, ChevronRight, ArrowLeft } from 'lucide-react'
 import { login, register } from '@/lib/client'
 
@@ -13,6 +13,28 @@ export default function LoginPage() {
   const [error,   setError]   = useState('')
   const [form,    setForm]    = useState({ username:'', password:'', codigo:'', nombre:'' })
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) => setForm(f => ({...f,[k]:e.target.value}))
+
+  useEffect(() => {
+    let alive = true
+    const checkExistingSession = async () => {
+      const token = localStorage.getItem('fib_token')
+      if (!token) return
+      try {
+        const res = await fetch('/api/auth/me', { headers: { Authorization: `Bearer ${token}` } })
+        if (!res.ok) throw new Error('unauthorized')
+        const me = await res.json()
+        if (!alive) return
+        localStorage.setItem('fib_user', JSON.stringify(me))
+        window.location.href = '/dashboard'
+      } catch {
+        localStorage.removeItem('fib_token')
+        localStorage.removeItem('fib_user')
+      }
+    }
+
+    checkExistingSession()
+    return () => { alive = false }
+  }, [])
 
   async function submit(e: React.FormEvent) {
     e.preventDefault(); setError(''); setLoading(true)

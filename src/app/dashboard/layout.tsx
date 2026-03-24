@@ -66,16 +66,34 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const { theme } = useTheme()
   const pollingRef = useRef<ReturnType<typeof setInterval>|null>(null)
 
-  // Check token and load user
+  // Check token and load user from backend to keep session state consistent.
   useEffect(() => {
-    const token = localStorage.getItem('fib_token')
-    if (!token || isTokenExpired(token)) {
-      localStorage.clear()
-      window.location.href = '/login'
-      return
+    let alive = true
+    const validate = async () => {
+      const token = localStorage.getItem('fib_token')
+      if (!token || isTokenExpired(token)) {
+        localStorage.removeItem('fib_token')
+        localStorage.removeItem('fib_user')
+        window.location.href = '/login'
+        return
+      }
+
+      try {
+        const res = await fetch('/api/auth/me', { headers: { Authorization: `Bearer ${token}` } })
+        if (!res.ok) throw new Error('unauthorized')
+        const me = await res.json()
+        if (!alive) return
+        localStorage.setItem('fib_user', JSON.stringify(me))
+        setUser(me)
+      } catch {
+        localStorage.removeItem('fib_token')
+        localStorage.removeItem('fib_user')
+        window.location.href = '/login'
+      }
     }
-    const u = localStorage.getItem('fib_user')
-    if (u) setUser(JSON.parse(u))
+
+    validate()
+    return () => { alive = false }
   }, [])
 
   // Periodic token validity check (every 60s)
@@ -83,7 +101,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     const interval = setInterval(() => {
       const token = localStorage.getItem('fib_token')
       if (!token || isTokenExpired(token)) {
-        localStorage.clear()
+        localStorage.removeItem('fib_token')
+        localStorage.removeItem('fib_user')
         window.location.href = '/login'
       }
     }, 60_000)
@@ -120,7 +139,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
   }, [pathname])
 
-  const logout = () => { localStorage.clear(); window.location.href = '/login' }
+  const logout = () => {
+    localStorage.removeItem('fib_token')
+    localStorage.removeItem('fib_user')
+    window.location.href = '/login'
+  }
 
   const sidebarStyle = {
     backgroundColor: theme.sidebarColor,

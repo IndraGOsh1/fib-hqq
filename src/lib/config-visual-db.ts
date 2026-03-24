@@ -15,7 +15,14 @@ export interface ConfigVisual {
   textoHero:          string
   textoSubhero:       string
   textoMision:        string
+  oposicionesInfo:    {
+    titulo: string
+    descripcion: string
+    datos: string[]
+    imagenes: string[]
+  }
   divisionesInfo:     { nombre:string; descripcion:string; logoUrl:string }[]
+  indraRecoveryUsedAt: string | null
   actualizadoPor:     string
   actualizadoEn:      string
 }
@@ -37,11 +44,18 @@ const DEFAULT: ConfigVisual = {
   textoHero:          'Federal Investigation Bureau',
   textoSubhero:       'Sistema centralizado de gestión operativa',
   textoMision:        'Proteger la integridad del estado de derecho mediante investigaciones federales de alto nivel, garantizando la seguridad de los ciudadanos y la justicia.',
+  oposicionesInfo: {
+    titulo: 'Oposiciones',
+    descripcion: 'Proceso de oposiciones para ingreso y asignacion de perfiles en la division.',
+    datos: ['Convocatoria abierta por periodos', 'Requiere cuenta activa', 'Un envio por usuario o IP'],
+    imagenes: ['https://i.imgur.com/7NxeszI.png'],
+  },
   divisionesInfo:     [
     { nombre:'CIRG', descripcion:'Critical Incident Response Group', logoUrl:'https://i.imgur.com/QKAp6O1.png' },
     { nombre:'ERT',  descripcion:'Evidence Response Team',           logoUrl:'https://i.imgur.com/IemqOQh.png' },
     { nombre:'RRHH', descripcion:'Recursos Humanos',                 logoUrl:'https://i.imgur.com/z5NiemF.png' },
   ],
+  indraRecoveryUsedAt: null,
   actualizadoPor:'SYSTEM', actualizadoEn:new Date().toISOString(),
 }
 

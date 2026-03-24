@@ -49,10 +49,33 @@ const UNITS = [
 
 const RANKS = [
   { section:'Command Staff',    color:'border-red-700',       ranks:['Director','Sub Director'] },
-  { section:'Jefatura',         color:'border-accent-gold',   ranks:['Coordinador','Jefe de Personal'] },
+  { section:'In charge Agents', color:'border-accent-gold',   ranks:['Coordinador','Jefe de Personal'] },
   { section:'Supervisory',      color:'border-accent-blue',   ranks:['Supervisor','Special Agent Senior'] },
   { section:'Agentes Federales',color:'border-bg-border',     ranks:['Special Agent III','Special Agent II','Special Agent I','Training Agent'] },
 ]
+
+type LandingConfig = {
+  textoMision?: string
+  oposicionesInfo?: {
+    titulo?: string
+    descripcion?: string
+    datos?: string[]
+    imagenes?: string[]
+  }
+}
+
+type OposicionForm = {
+  id: string
+  title: string
+  description: string
+  fields: Array<{
+    id: string
+    label: string
+    type: string
+    required: boolean
+    options?: string[]
+  }>
+}
 
 function Ticker() {
   const [on, setOn] = useState(true)
@@ -67,6 +90,68 @@ function Ticker() {
 }
 
 export default function Home() {
+  const [config, setConfig] = useState<LandingConfig>({})
+  const [oposForm, setOposForm] = useState<OposicionForm | null>(null)
+  const [oposAnswers, setOposAnswers] = useState<Record<string, any>>({})
+  const [oposStartedAt, setOposStartedAt] = useState<number>(Date.now())
+  const [oposBusy, setOposBusy] = useState(false)
+  const [oposMsg, setOposMsg] = useState<{ ok: boolean; text: string } | null>(null)
+
+  useEffect(() => {
+    fetch('/api/config-visual').then(r => r.json()).then(setConfig).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    const token = typeof window !== 'undefined' ? (localStorage.getItem('fib_token') || '') : ''
+    if (!token) return
+
+    fetch('/api/forms', { headers: { Authorization: `Bearer ${token}` } })
+      .then(async (r) => (r.ok ? r.json() : null))
+      .then((payload) => {
+        const forms = Array.isArray(payload?.forms) ? payload.forms : []
+        const first = forms.find((f: any) => f?.kind === 'oposicion' && f?.active)
+        if (first) {
+          setOposForm(first)
+          setOposStartedAt(Date.now())
+        }
+      })
+      .catch(() => {})
+  }, [])
+
+  async function submitOposicion() {
+    if (!oposForm) return
+    const token = typeof window !== 'undefined' ? (localStorage.getItem('fib_token') || '') : ''
+    if (!token) {
+      setOposMsg({ ok: false, text: 'Inicia sesión para enviar oposiciones.' })
+      return
+    }
+
+    setOposBusy(true)
+    try {
+      const res = await fetch(`/api/forms/${oposForm.id}/submit`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ hp: '', startedAt: oposStartedAt, answers: oposAnswers }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data?.error || 'No se pudo enviar la oposicion')
+      setOposAnswers({})
+      setOposStartedAt(Date.now())
+      setOposMsg({ ok: true, text: 'Oposicion enviada correctamente.' })
+    } catch (e: any) {
+      setOposMsg({ ok: false, text: String(e?.message || 'Error al enviar') })
+    } finally {
+      setOposBusy(false)
+    }
+  }
+
+  const oposInfo = config.oposicionesInfo || {}
+  const oposDatos = Array.isArray(oposInfo.datos) ? oposInfo.datos : []
+  const oposImagenes = Array.isArray(oposInfo.imagenes) ? oposInfo.imagenes : []
+
   return (
     <main className="min-h-screen bg-bg-base">
       {/* Nav */}
@@ -80,7 +165,7 @@ export default function Home() {
             </div>
           </div>
           <div className="hidden md:flex items-center gap-8">
-            {['unidades','rangos','mision'].map(s => (
+            {['unidades','rangos','mision','oposiciones'].map(s => (
               <a key={s} href={`#${s}`} className="font-display text-[10px] tracking-widest uppercase text-tx-muted hover:text-tx-primary transition-colors">{s}</a>
             ))}
           </div>
@@ -198,14 +283,14 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Mission */}
+      {/* Mission + Oposiciones */}
       <section id="mision" className="py-28 px-6">
-        <div className="max-w-7xl mx-auto grid md:grid-cols-2 gap-14 items-center">
+        <div className="max-w-7xl mx-auto grid md:grid-cols-2 gap-8 items-start">
           <div>
             <span className="section-tag">// Declaración Institucional</span>
             <div className="divider" />
             <h2 className="font-display text-3xl font-semibold tracking-wider uppercase text-tx-primary mb-5">Misión y Valores</h2>
-            <p className="text-tx-secondary text-sm leading-relaxed mb-7">La FIB es la principal agencia de inteligencia e investigación federal. Protegemos el estado de derecho mediante operaciones encubiertas, investigación criminal avanzada y coordinación inter-divisional.</p>
+            <p className="text-tx-secondary text-sm leading-relaxed mb-7">{config.textoMision || 'La FIB es la principal agencia de inteligencia e investigación federal. Protegemos el estado de derecho mediante operaciones encubiertas, investigación criminal avanzada y coordinación inter-divisional.'}</p>
             <Link href="/login"><button className="btn-primary"><Lock size={12} />Ingresar al Sistema<ChevronRight size={12} /></button></Link>
           </div>
           <div className="relative border border-bg-border overflow-hidden">
@@ -214,6 +299,81 @@ export default function Home() {
             <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-bg-base/80 to-transparent p-4">
               <p className="font-mono text-[9px] text-tx-muted tracking-widest uppercase">FIB — Gala Institucional</p>
             </div>
+          </div>
+        </div>
+
+        <div id="oposiciones" className="max-w-7xl mx-auto mt-8 grid md:grid-cols-2 gap-8">
+          <div className="card p-6">
+            <span className="section-tag">// Convocatoria</span>
+            <h3 className="font-display text-2xl font-semibold tracking-wider uppercase text-tx-primary mt-2 mb-3">{oposInfo.titulo || 'Oposiciones'}</h3>
+            <p className="text-sm text-tx-secondary leading-relaxed mb-4">{oposInfo.descripcion || 'Proceso de oposiciones para ingreso y asignacion de perfiles en la division.'}</p>
+            <div className="space-y-2 mb-4">
+              {oposDatos.map((d, idx) => (
+                <p key={`${d}-${idx}`} className="text-xs text-tx-secondary border-l border-accent-blue/40 pl-3">{d}</p>
+              ))}
+            </div>
+            {oposImagenes.length > 0 && (
+              <div className="grid grid-cols-2 gap-2">
+                {oposImagenes.slice(0, 4).map((img, idx) => (
+                  <img key={`${img}-${idx}`} src={img} alt="Oposiciones" className="w-full h-28 object-cover border border-bg-border" />
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="card p-6">
+            <span className="section-tag">// Formulario de Oposición</span>
+            {!oposForm && (
+              <div className="mt-3">
+                <p className="text-xs text-tx-muted mb-3">No hay formulario de oposiciones activo o no tienes sesión.</p>
+                <Link href="/login"><button className="btn-primary"><Lock size={12} />Iniciar sesión</button></Link>
+              </div>
+            )}
+
+            {oposForm && (
+              <div className="mt-3 space-y-3">
+                <h4 className="font-display text-sm font-semibold tracking-wider uppercase text-tx-primary">{oposForm.title}</h4>
+                {oposForm.description && <p className="text-xs text-tx-secondary">{oposForm.description}</p>}
+
+                {oposForm.fields.map((field) => (
+                  <div key={field.id}>
+                    <label className="label">{field.label}{field.required ? ' *' : ''}</label>
+                    {(field.type === 'textarea') && (
+                      <textarea
+                        className="input min-h-16"
+                        value={oposAnswers[field.id] || ''}
+                        onChange={(e) => setOposAnswers((p) => ({ ...p, [field.id]: e.target.value }))}
+                      />
+                    )}
+                    {(field.type === 'text' || field.type === 'date' || field.type === 'number') && (
+                      <input
+                        type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'}
+                        className="input"
+                        value={oposAnswers[field.id] || ''}
+                        onChange={(e) => setOposAnswers((p) => ({ ...p, [field.id]: e.target.value }))}
+                      />
+                    )}
+                    {['select', 'radio'].includes(field.type) && (
+                      <select
+                        className="input"
+                        value={oposAnswers[field.id] || ''}
+                        onChange={(e) => setOposAnswers((p) => ({ ...p, [field.id]: e.target.value }))}
+                      >
+                        <option value="">Selecciona...</option>
+                        {(field.options || []).map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+                      </select>
+                    )}
+                  </div>
+                ))}
+
+                <button onClick={submitOposicion} disabled={oposBusy} className="btn-primary">
+                  {oposBusy ? 'Enviando...' : 'Enviar oposición'}
+                </button>
+                {oposMsg && (
+                  <p className={`text-xs ${oposMsg.ok ? 'text-green-400' : 'text-red-400'}`}>{oposMsg.text}</p>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </section>
