@@ -1,8 +1,7 @@
 'use client'
-import { useEffect, useState } from 'react'
-import { Plus, Trash2, FileText, StickyNote, Lock, X, CheckCircle, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react'
-import { getCarpeta, crearAnotacion, borrarCarpetaItem } from '@/lib/client'
-import { getAgente } from '@/lib/client'
+import { useEffect, useState, useRef, useCallback } from 'react'
+import { Plus, Trash2, FileText, StickyNote, Lock, X, CheckCircle, AlertCircle, ChevronDown, ChevronUp, Search, User, ChevronRight } from 'lucide-react'
+import { getCarpeta, crearAnotacion, borrarCarpetaItem, getAgente } from '@/lib/client'
 
 function Toast({ msg, ok, onClose }: { msg:string; ok:boolean; onClose:()=>void }) {
   useEffect(() => { const t = setTimeout(onClose, 3000); return () => clearTimeout(t) }, [])
@@ -13,6 +12,193 @@ function Toast({ msg, ok, onClose }: { msg:string; ok:boolean; onClose:()=>void 
   )
 }
 
+// ── Personal search dropdown ────────────────────────────────────────────
+function PersonalSearchDropdown({ onSelect, placeholder = 'Buscar agente...' }: { onSelect: (agente: any) => void; placeholder?: string }) {
+  const [query, setQuery]       = useState('')
+  const [results, setResults]   = useState<any[]>([])
+  const [open, setOpen]         = useState(false)
+  const [loading, setLoading]   = useState(false)
+  const containerRef            = useRef<HTMLDivElement>(null)
+  const debounceRef             = useRef<ReturnType<typeof setTimeout>>()
+
+  const search = useCallback(async (q: string) => {
+    if (!q.trim()) { setResults([]); return }
+    setLoading(true)
+    try {
+      const token = localStorage.getItem('fib_token') || ''
+      const res = await fetch(`/api/personal?q=${encodeURIComponent(q)}&estado=Activo`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      const data = await res.json()
+      setResults(data.agentes || [])
+    } catch { setResults([]) }
+    finally { setLoading(false) }
+  }, [])
+
+  useEffect(() => {
+    clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => search(query), 300)
+    return () => clearTimeout(debounceRef.current)
+  }, [query, search])
+
+  // Close on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  return (
+    <div ref={containerRef} className="relative">
+      <div className="flex items-center gap-2 bg-bg-surface border border-bg-border focus-within:border-accent-blue transition-colors">
+        <Search size={12} className="ml-3 text-tx-muted shrink-0" />
+        <input
+          className="flex-1 bg-transparent px-2 py-2 text-sm text-tx-primary placeholder-tx-muted focus:outline-none"
+          placeholder={placeholder}
+          value={query}
+          onChange={e => { setQuery(e.target.value); setOpen(true) }}
+          onFocus={() => setOpen(true)}
+        />
+        {loading && <div className="mr-3 w-3 h-3 border border-accent-blue/40 border-t-accent-blue rounded-full animate-spin shrink-0" />}
+      </div>
+      {open && (query.trim() || results.length > 0) && (
+        <div className="absolute top-full left-0 right-0 z-50 bg-bg-card border border-bg-border shadow-xl mt-0.5 max-h-52 overflow-y-auto">
+          {results.length === 0 && query.trim() && !loading && (
+            <p className="px-3 py-2.5 font-mono text-[10px] text-tx-muted">Sin resultados para "{query}"</p>
+          )}
+          {results.map((a: any) => (
+            <button
+              key={a.id || a.numero}
+              onClick={() => { onSelect(a); setQuery(''); setResults([]); setOpen(false) }}
+              className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-bg-hover transition-colors text-left border-b border-bg-border/50 last:border-0"
+            >
+              <div className="w-6 h-6 bg-accent-blue/20 border border-accent-blue/30 flex items-center justify-center shrink-0">
+                <span className="font-display text-[9px] font-bold text-accent-blue uppercase">{a.nombre?.[0]}</span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-tx-primary font-medium truncate">{a.nombre}</p>
+                <p className="font-mono text-[8px] text-tx-muted">{a.rango} · #{a.numero}</p>
+              </div>
+              <span className={`tag text-[8px] border ${a.estado==='Activo'?'border-green-700 text-green-400':'border-gray-700 text-gray-400'}`}>{a.estado}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Carpeta de otro agente (para roles superiores) ─────────────────────
+function CarpetaExterna({ agente, onClose }: { agente: any; onClose: () => void }) {
+  const [carpeta, setCarpeta] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+  const [tab, setTab] = useState<'ficha'|'anotaciones'|'documentos'>('ficha')
+
+  useEffect(() => {
+    const token = localStorage.getItem('fib_token') || ''
+    fetch(`/api/carpeta?username=${encodeURIComponent(agente.username || agente.nombre)}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    .then(r => r.json())
+    .then(d => { setCarpeta(d); setLoading(false) })
+    .catch(() => setLoading(false))
+  }, [agente])
+
+  const ESTADO_TAG: Record<string,string> = {
+    Activo:    'tag border-green-700 bg-green-900/20 text-green-400',
+    Retirado:  'tag border-gray-700 text-gray-400',
+    Expulsado: 'tag border-red-700 text-red-400',
+    Vetado:    'tag border-gray-800 text-gray-600',
+  }
+
+  return (
+    <div className="fixed inset-0 z-[200] bg-black/80 flex items-center justify-center p-4" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="bg-bg-card border border-bg-border w-full max-w-2xl flex flex-col" style={{ maxHeight: '90vh' }}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-bg-border shrink-0">
+          <div>
+            <span className="section-tag">// Carpeta de Agente</span>
+            <p className="font-display text-sm font-semibold tracking-wider uppercase text-tx-primary mt-0.5">{agente.nombre}</p>
+            <p className="font-mono text-[8px] text-tx-muted">{agente.rango} · #{agente.numero}</p>
+          </div>
+          <button onClick={onClose} className="text-tx-muted hover:text-tx-primary"><X size={15}/></button>
+        </div>
+
+        <div className="flex border-b border-bg-border shrink-0">
+          {(['ficha','anotaciones','documentos'] as const).map(t => (
+            <button key={t} onClick={() => setTab(t)}
+              className={`px-4 py-2.5 font-mono text-[9px] tracking-widest uppercase transition-all border-b-2 -mb-px ${tab===t?'border-accent-blue text-accent-blue':'border-transparent text-tx-muted hover:text-tx-secondary'}`}>
+              {t}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-5">
+          {loading ? (
+            <p className="text-center font-mono text-xs text-tx-muted py-8">Cargando...</p>
+          ) : tab === 'ficha' ? (
+            <div className="flex flex-col gap-3">
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  ['Nombre', agente.nombre],
+                  ['Rango',  agente.rango],
+                  ['Sección', agente.seccion],
+                  ['N° Agente', `#${agente.numero}`],
+                  ['Estado', agente.estado],
+                  ['Ingreso', agente.fechaIngreso||'—'],
+                ].map(([k,v]) => (
+                  <div key={k} className="bg-bg-surface border border-bg-border p-2.5">
+                    <p className="font-mono text-[8px] text-tx-muted uppercase mb-0.5">{k}</p>
+                    <p className="text-xs text-tx-primary">{v}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                {[['Leves',agente.sLeves,'text-yellow-400','border-yellow-800/40'],['Moderadas',agente.sModeradas,'text-orange-400','border-orange-800/40'],['Graves',agente.sGraves,'text-red-400','border-red-800/40']].map(([k,v,c,b]) => (
+                  <div key={k} className={`bg-bg-surface border ${b} p-3 text-center`}>
+                    <p className={`font-display text-2xl font-bold ${c}`}>{v||'0'}</p>
+                    <p className="font-mono text-[8px] text-tx-muted uppercase">{k}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : tab === 'anotaciones' ? (
+            <div className="flex flex-col gap-2">
+              {!carpeta?.anotaciones?.length
+                ? <p className="text-center py-8 font-mono text-xs text-tx-muted">Sin anotaciones</p>
+                : carpeta.anotaciones.filter((a:any)=>!a.privada).map((a:any) => (
+                  <div key={a.id} className="card p-3">
+                    <p className="text-sm font-medium text-tx-primary">{a.titulo}</p>
+                    <p className="text-xs text-tx-secondary mt-1 leading-relaxed">{a.contenido}</p>
+                    <p className="font-mono text-[8px] text-tx-muted mt-2">{new Date(a.fecha).toLocaleDateString('es')}</p>
+                  </div>
+                ))
+              }
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {!carpeta?.documentos?.length
+                ? <p className="text-center py-8 font-mono text-xs text-tx-muted">Sin documentos</p>
+                : carpeta.documentos.map((d:any) => (
+                  <div key={d.id} className="card px-4 py-3 flex items-center gap-3">
+                    <FileText size={14} className="text-accent-blue shrink-0"/>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-tx-primary font-medium truncate">{d.nombre}</p>
+                      {d.descripcion && <p className="text-xs text-tx-secondary truncate">{d.descripcion}</p>}
+                    </div>
+                  </div>
+                ))
+              }
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Main page ────────────────────────────────────────────────────────────
 export default function CarpetaPage() {
   const [user,     setUser]     = useState<any>(null)
   const [carpeta,  setCarpeta]  = useState<any>(null)
@@ -20,21 +206,20 @@ export default function CarpetaPage() {
   const [loading,  setLoading]  = useState(true)
   const [toast,    setToast]    = useState<{msg:string;ok:boolean}|null>(null)
   const [tab,      setTab]      = useState<'ficha'|'anotaciones'|'documentos'>('ficha')
-
-  // New annotation form
   const [showForm, setShowForm] = useState(false)
   const [form,     setForm]     = useState({ titulo:'', contenido:'', privada:false })
   const [saving,   setSaving]   = useState(false)
-
-  // Expanded annotation
   const [expanded, setExpanded] = useState<string|null>(null)
+  // For command/supervisory: viewing another agent's carpeta
+  const [carpetaExterna, setCarpetaExterna] = useState<any>(null)
+
+  const isSuperv = ['command_staff','supervisory'].includes(user?.rol)
 
   useEffect(() => {
     const u = localStorage.getItem('fib_user')
     if (u) {
       const parsed = JSON.parse(u)
       setUser(parsed)
-      // Load carpeta and agent data in parallel
       Promise.all([
         getCarpeta(),
         parsed.agentNumber ? getAgente(parsed.agentNumber) : Promise.resolve(null),
@@ -87,6 +272,7 @@ export default function CarpetaPage() {
   return (
     <div className="max-w-4xl mx-auto">
       {toast && <Toast msg={toast.msg} ok={toast.ok} onClose={()=>setToast(null)}/>}
+      {carpetaExterna && <CarpetaExterna agente={carpetaExterna} onClose={()=>setCarpetaExterna(null)}/>}
 
       <div className="page-header">
         <span className="section-tag">// Carpeta Personal</span>
@@ -95,6 +281,18 @@ export default function CarpetaPage() {
         </h1>
         <p className="text-tx-muted text-sm">{user?.rol?.replace('_',' ')}</p>
       </div>
+
+      {/* Supervisory/CS: search other agents' carpetas */}
+      {isSuperv && (
+        <div className="card p-4 mb-5">
+          <p className="font-mono text-[9px] uppercase tracking-widest text-accent-blue mb-2">Ver carpeta de otro agente</p>
+          <PersonalSearchDropdown
+            placeholder="Buscar por nombre, apodo o número..."
+            onSelect={a => setCarpetaExterna(a)}
+          />
+          <p className="font-mono text-[8px] text-tx-dim mt-1.5">Solo se muestran anotaciones públicas de otros agentes</p>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex border-b border-bg-border mb-5">
@@ -115,12 +313,12 @@ export default function CarpetaPage() {
         <div>
           {!agente ? (
             <div className="card p-10 text-center">
+              <User size={32} className="text-tx-muted opacity-20 mx-auto mb-3"/>
               <p className="font-mono text-xs text-tx-muted tracking-widest uppercase">No hay expediente vinculado a esta cuenta</p>
               <p className="font-mono text-[9px] text-tx-dim mt-2">Pide a Command Staff que vincule tu N° de agente</p>
             </div>
           ) : (
             <div className="flex flex-col gap-4">
-              {/* Header card */}
               <div className="card p-5 flex items-start gap-5">
                 <div className="w-14 h-14 bg-accent-blue/20 border border-accent-blue/40 flex items-center justify-center shrink-0">
                   <span className="font-display text-2xl font-bold text-accent-blue uppercase">{agente.nombre?.[0]}</span>
@@ -135,7 +333,6 @@ export default function CarpetaPage() {
                 </div>
               </div>
 
-              {/* Details grid */}
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 {[
                   ['Apodo', agente.apodo||'—'],
@@ -152,7 +349,6 @@ export default function CarpetaPage() {
                 ))}
               </div>
 
-              {/* Especialidades */}
               {agente.especial && (
                 <div className="card p-4">
                   <p className="font-mono text-[9px] text-tx-muted uppercase mb-2">Especialidades</p>
@@ -164,7 +360,6 @@ export default function CarpetaPage() {
                 </div>
               )}
 
-              {/* Sanciones */}
               <div className="card p-4">
                 <p className="font-mono text-[9px] text-tx-muted uppercase mb-3">Sanciones</p>
                 <div className="grid grid-cols-3 gap-3">
@@ -181,7 +376,6 @@ export default function CarpetaPage() {
                 </div>
               </div>
 
-              {/* Historial */}
               {agente.historial?.length > 0 && (
                 <div className="card p-4">
                   <p className="font-mono text-[9px] text-tx-muted uppercase mb-3">Historial Reciente</p>
@@ -208,7 +402,7 @@ export default function CarpetaPage() {
         <div>
           <div className="flex items-center justify-between mb-4">
             <p className="font-mono text-[9px] text-tx-muted tracking-widest uppercase">Notas y anotaciones personales</p>
-            <button onClick={() => setShowForm(p=>!p)} className="btn-primary py-2 text-[9px]"><Plus size={11}/>Nueva Anotación</button>
+            <button onClick={() => setShowForm(p=>!p)} className="btn-primary py-2 text-[9px]"><Plus size={11}/>Nueva</button>
           </div>
 
           {showForm && (
@@ -218,10 +412,7 @@ export default function CarpetaPage() {
               <div className="flex items-center justify-between">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" checked={form.privada} onChange={e=>setForm(p=>({...p,privada:e.target.checked}))} className="w-3 h-3"/>
-                  <div className="flex items-center gap-1">
-                    <Lock size={10} className="text-tx-muted"/>
-                    <span className="font-mono text-[9px] text-tx-muted uppercase">Privada</span>
-                  </div>
+                  <div className="flex items-center gap-1"><Lock size={10} className="text-tx-muted"/><span className="font-mono text-[9px] text-tx-muted uppercase">Privada</span></div>
                 </label>
                 <div className="flex gap-2">
                   <button type="button" onClick={()=>setShowForm(false)} className="btn-ghost py-1.5 px-3 text-[9px]">Cancelar</button>
@@ -248,9 +439,7 @@ export default function CarpetaPage() {
                       <p className="font-mono text-[8px] text-tx-muted">{new Date(a.fecha).toLocaleDateString('es',{day:'2-digit',month:'short',year:'numeric'})}</p>
                     </div>
                     {a.privada && <Lock size={10} className="text-tx-muted shrink-0"/>}
-                    <button onClick={e=>{e.stopPropagation();borrar('anotacion',a.id)}} className="text-tx-muted hover:text-red-400 transition-colors shrink-0 p-1">
-                      <Trash2 size={12}/>
-                    </button>
+                    <button onClick={e=>{e.stopPropagation();borrar('anotacion',a.id)}} className="text-tx-muted hover:text-red-400 transition-colors shrink-0 p-1"><Trash2 size={12}/></button>
                     {expanded===a.id ? <ChevronUp size={13} className="text-tx-muted shrink-0"/> : <ChevronDown size={13} className="text-tx-muted shrink-0"/>}
                   </div>
                   {expanded===a.id && (
@@ -287,9 +476,7 @@ export default function CarpetaPage() {
                     {d.descripcion && <p className="text-xs text-tx-secondary truncate">{d.descripcion}</p>}
                     <p className="font-mono text-[8px] text-tx-muted">{new Date(d.fecha).toLocaleDateString('es')}</p>
                   </div>
-                  <button onClick={()=>borrar('documento',d.id)} className="text-tx-muted hover:text-red-400 transition-colors p-1">
-                    <Trash2 size={12}/>
-                  </button>
+                  <button onClick={()=>borrar('documento',d.id)} className="text-tx-muted hover:text-red-400 transition-colors p-1"><Trash2 size={12}/></button>
                 </div>
               ))}
             </div>

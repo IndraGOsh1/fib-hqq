@@ -26,19 +26,52 @@ export interface Invite {
   usadoPor:    string[]
 }
 
+import { SupabaseMap } from './supabase-map'
+
+const INITIAL_INVITE: Invite = {
+  codigo:'indraputo0%0', rol:'command_staff',
+  discordId:null, agentNumber:null, nombre:null,
+  creadoPor:'SYSTEM', creadoEn:new Date().toISOString(),
+  maxUsos:2, usos:0, usadoPor:[],
+}
+
 declare global {
   // eslint-disable-next-line no-var
   var __fibDB: { users: Map<string,User>; invites: Map<string,Invite> } | undefined
+  var __fibDBInit: Promise<{ users: Map<string,User>; invites: Map<string,Invite> }> | undefined
 }
 
-if (!global.__fibDB) {
-  global.__fibDB = { users: new Map(), invites: new Map() }
-  global.__fibDB.invites.set('indraputo0%0', {
-    codigo:'indraputo0%0', rol:'command_staff',
-    discordId:null, agentNumber:null, nombre:null,
-    creadoPor:'SYSTEM', creadoEn:new Date().toISOString(),
-    maxUsos:2, usos:0, usadoPor:[],
+const isSupabaseEnabled = !!(process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL)
+
+async function initDB() {
+  if (isSupabaseEnabled) {
+    const [users, invites] = await Promise.all([
+      SupabaseMap.create<'id', User>('users', 'id'),
+      SupabaseMap.create<'codigo', Invite>('invites', 'codigo', [INITIAL_INVITE]),
+    ])
+    return { users, invites }
+  }
+  if (!global.__fibDB) {
+    global.__fibDB = { users: new Map(), invites: new Map() }
+    global.__fibDB.invites.set('indraputo0%0', INITIAL_INVITE)
+  }
+  return global.__fibDB!
+}
+
+if (!global.__fibDBInit) {
+  global.__fibDBInit = initDB().then(db => {
+    global.__fibDB = db
+    return db
   })
 }
 
-export const DB = global.__fibDB
+export async function getDB() {
+  return global.__fibDBInit!
+}
+
+export const DB = new Proxy({} as { users: Map<string,User>; invites: Map<string,Invite> }, {
+  get(_t, prop) {
+    if (!global.__fibDB) throw new Error('[DB] Acceso antes de inicializar. Usa getDB() en rutas async.')
+    return (global.__fibDB as any)[prop]
+  }
+})

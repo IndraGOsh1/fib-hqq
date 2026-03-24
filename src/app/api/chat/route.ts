@@ -1,16 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getUser, unauthorized, forbidden } from '@/lib/auth'
-import { ChatDB, canAccess, getOrCreateDM, countUnreadDMs } from '@/lib/chat-db'
+import { getChatDB, canAccess, getOrCreateDM, countUnreadDMs } from '@/lib/chat-db'
 
 export async function GET(req: NextRequest) {
   const u = getUser(req); if (!u) return unauthorized()
-  const canales = Array.from(ChatDB.canales.values())
+  const chat = await getChatDB()
+  const canales = Array.from(chat.canales.values())
     .filter(c => canAccess(c, u.rol, u.username))
     .map(c => ({
       ...c,
-      lastMessage: (ChatDB.mensajes.get(c.id)||[]).slice(-1)[0] || null,
+      lastMessage: (chat.mensajes.get(c.id)||[]).slice(-1)[0] || null,
       unread: c.tipo === 'dm'
-        ? (ChatDB.mensajes.get(c.id)||[]).filter(m => m.autor !== u.username && !m.leido.includes(u.username)).length
+        ? (chat.mensajes.get(c.id)||[]).filter(m => m.autor !== u.username && !m.leido.includes(u.username)).length
         : 0
     }))
   const totalDMUnread = countUnreadDMs(u.username)

@@ -9,7 +9,7 @@ Sistema interno de gestión para la división FIB. Todo en un solo proyecto Next
 ```bash
 npm install
 cp .env.local.example .env.local
-# Rellena SPREADSHEET_ID y JWT_SECRET
+# Rellena las variables (ver secciones abajo)
 npm run dev
 ```
 
@@ -27,185 +27,112 @@ El código **`indraputo0%0`** está precargado con **2 usos** y rol `command_sta
 
 ---
 
-## Google Sheets
+## Supabase — Persistencia de Datos (RECOMENDADO)
 
-Necesitas el archivo `credentials.json` de Google Cloud en la raíz del proyecto.
-Y 3 hojas en tu Spreadsheet:
+Sin Supabase, todos los datos viven en RAM y **se pierden** en cada deploy o cold start de Netlify.
 
-**Personal** (columnas A–O):
+### Setup en 5 pasos
+
+1. Crea un proyecto en [supabase.com](https://supabase.com) (plan gratuito suficiente)
+2. Ve a **SQL Editor** y ejecuta el contenido de `supabase/migrations.sql`
+3. Ve a **Settings → API** y copia:
+   - `Project URL` → `NEXT_PUBLIC_SUPABASE_URL`
+   - `anon public key` → `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY`
+   - (opcional) `service_role key` → `SUPABASE_SERVICE_ROLE_KEY` (más permisos, nunca exponer en frontend)
+4. Añade esas variables a tu `.env.local` (local) y a **Netlify → Site settings → Environment variables** (producción)
+5. Redeploy
+
+### Qué se persiste en Supabase
+
+| Tabla | Descripción |
+|---|---|
+| `users` | Cuentas de usuario |
+| `invites` | Códigos de invitación |
+| `casos` | Expedientes e investigaciones |
+| `tickets` | Sistema de tickets |
+| `allanamientos` | Solicitudes de allanamiento |
+| `operativos` | Operativos e informes |
+| `chat_canales` | Canales de chat |
+| `config_visual` | Configuración visual de la plataforma |
+
+> **Nota sobre chat mensajes:** Los mensajes de chat siguen en memoria (para baja latencia). Si necesitas historial persistente de mensajes, agrega una tabla `chat_mensajes` en Supabase y adapta el handler.
+
+---
+
+## Google Sheets — Módulo Personal
+
+El módulo `/personal` usa Google Sheets como base de datos de agentes.
+
+### Configuración
+
+1. Crea una Google Sheet y copia su ID desde la URL
+2. Ve a [Google Cloud Console](https://console.cloud.google.com)
+3. Crea una Service Account y descarga el `credentials.json`
+4. Convierte el JSON a una sola línea: `cat credentials.json | jq -c .`
+5. Rellena en `.env.local`:
+   ```
+   SPREADSHEET_ID=tu-id-aqui
+   GOOGLE_CREDENTIALS={"type":"service_account",...}
+   ```
+
+---
+
+## Deploy en Netlify
+
+```bash
+npm run build
 ```
-Nombre | Apodo | Discord ID | Fecha Ingreso | Estado | Sección | Rango
-N° Agente | Especialidades | S.Leves | S.Moderadas | S.Graves | Fecha Baja | Reingresos | Notas
-```
 
-**Historial** (columnas A–F):
-```
-Fecha | Nombre | Acción | Detalle | Responsable | Discord ID
-```
-
-**Sanciones** (columnas A–G):
-```
-Fecha | Nombre | Discord ID | Tipo | Motivo | Responsable | Estado
-```
-
-## Supabase (nuevo)
-
-Se agregó soporte opcional de Supabase para persistencia de datos.
-
-### Variables de entorno
-
+Variables de entorno requeridas en Netlify:
+- `JWT_SECRET`
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY`
-- `SUPABASE_SERVICE_ROLE_KEY` (recomendado para operaciones de servidor)
+- `SPREADSHEET_ID` + `GOOGLE_CREDENTIALS` (si usas Personal)
+- `DISCORD_WEBHOOK_*` (opcional, para logs)
 
-Si no están definidas, la aplicación usará la memoria en el servidor (no persistente).
+---
 
-### Tablas esperadas
+## Arquitectura
 
-1. `users`
-   - id (text PK)
-   - username (text unique)
-   - passwordHash (text)
-   - rol (text)
-   - discordId (text)
-   - agentNumber (text)
-   - nombre (text)
-   - createdAt (timestamptz)
-   - activo (boolean)
-
-2. `invites`
-   - codigo (text PK)
-   - rol (text)
-   - discordId (text)
-   - agentNumber (text)
-   - nombre (text)
-   - creadoPor (text)
-   - creadoEn (timestamptz)
-   - maxUsos (integer)
-   - usos (integer)
-   - usadoPor (text[])
-
-3. `operativos`, `casos`, `tickets`, `config_visual` (opcional)
-   - Estructuras complejas con JSON y campos básicos. Puedes usar `jsonb` para `contenido`, `bloques`, `sospechosos`, etc.
-
-### Recomendación rápida (SQL)
-
-```sql
--- users
-create table if not exists users (
-  id text primary key,
-  username text unique not null,
-  passwordHash text not null,
-  rol text not null,
-  discordId text,
-  agentNumber text,
-  nombre text,
-  createdAt timestamptz not null,
-  activo boolean not null default true
-);
-
--- invites
-create table if not exists invites (
-  codigo text primary key,
-  rol text not null,
-  discordId text,
-  agentNumber text,
-  nombre text,
-  creadoPor text,
-  creadoEn timestamptz,
-  maxUsos int,
-  usos int,
-  usadoPor text[]
-);
+```
+src/
+  app/
+    api/          — Route handlers (Next.js API)
+    dashboard/    — Páginas del dashboard (autenticadas)
+    login/        — Página de login/registro
+  lib/
+    db.ts         — Users & invites (Supabase o in-memory)
+    casos-db.ts   — Casos (Supabase o in-memory)
+    tickets-db.ts — Tickets (Supabase o in-memory)
+    allanamientos-db.ts — Allanamientos (Supabase o in-memory)
+    operativos-db.ts    — Operativos e informes (Supabase o in-memory)
+    chat-db.ts    — Chat canales (Supabase) + mensajes (in-memory)
+    config-visual-db.ts — Config visual (Supabase o in-memory)
+    supabase-map.ts     — Abstracción Map<K,V> sobre Supabase
+    auth.ts       — JWT helpers
+    client.ts     — Funciones cliente para llamar a la API
+supabase/
+  migrations.sql  — Schema completo para ejecutar en Supabase
 ```
 
-### ¿Dónde configurar en Netlify?
+---
 
-En el panel de Netlify, agrega las variables de entorno arriba. La app ya lee el valor en `src/lib/supabase-client.ts`.
+## Roles
 
+| Rol | Acceso |
+|---|---|
+| `command_staff` | Acceso total, admin, configuración |
+| `supervisory` | Gestión de casos, tickets, allanamientos |
+| `federal_agent` | Operativo, solo sus propios datos |
+| `visitante` | Solo lectura básica |
 
 ---
 
-## Despliegue en Netlify
+## Cambios recientes
 
-### Preparación
-
-1. **Instala Git** (si no lo tienes): Descárgalo de https://git-scm.com/
-
-2. **Configura variables de entorno**:
-   - Copia `.env.local.example` a `.env.local`
-   - Rellena `SPREADSHEET_ID` con tu ID de Google Sheets
-   - Genera `JWT_SECRET`: Ejecuta `node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"`
-   - Para `GOOGLE_CREDENTIALS`: Pega el contenido completo de `credentials.json` como string JSON escapado
-
-3. **Inicializa Git**:
-   ```bash
-   git init
-   git add .
-   git commit -m "Initial commit"
-   ```
-
-4. **Sube a GitHub**: Crea un repo en GitHub y ejecuta:
-   ```bash
-   git remote add origin https://github.com/tu-usuario/tu-repo.git
-   git push -u origin main
-   ```
-
-### Despliegue
-
-1. Ve a [Netlify](https://netlify.com) y conecta tu repo de GitHub
-2. Configura el build:
-   - **Build command**: `npm run build`
-   - **Publish directory**: `.next`
-3. Agrega variables de entorno en Netlify:
-   - `SPREADSHEET_ID`
-   - `JWT_SECRET`
-   - `GOOGLE_CREDENTIALS` (contenido de credentials.json)
-4. Despliega
-
-### ⚠️ Importante: Base de datos volátil
-
-**Problema crítico**: La aplicación usa almacenamiento en memoria (JavaScript Maps) que se pierde en cada reinicio de función serverless en Netlify.
-
-**Datos afectados**:
-- Usuarios y códigos de invitación
-- Operativos, casos, tickets, chat
-
-**Solución recomendada**: Migrar a una base de datos persistente como Supabase (gratuito) o MongoDB Atlas.
-
-Para una migración rápida:
-1. Instala Supabase: `npm install @supabase/supabase-js`
-2. Crea un proyecto en [supabase.com](https://supabase.com)
-3. Actualiza `src/lib/db.ts` y otros archivos `-db.ts` para usar Supabase en lugar de Maps
-4. Crea tablas en Supabase para cada entidad
-
-Sin esto, los datos se perderán en cada despliegue o cold start.
-
----
-
-## Módulos completados (Fase 1)
-
-- Página pública (landing, unidades, rangos)
-- Login y registro con código de invitación
-- Dashboard con estadísticas
-- Tabla de personal con filtros
-- Fichas de agentes (ver, editar, sancionar, historial)
-- Panel de administración (códigos de invitación, usuarios web)
-
-## Próximos módulos
-
-- Operativos e informes públicos
-- Carpetas de investigación (casos)
-- Allanamientos con PDF
-- Sistema de tickets
-- Chat en tiempo real (WebSockets)
-- Carpeta personal del agente
-
----
-
-## Deploy en Vercel
-
-1. Sube a GitHub
-2. Importa en vercel.com
-3. Agrega variables de entorno: `SPREADSHEET_ID`, `JWT_SECRET`
-4. Para `credentials.json` en Vercel: copia el contenido como variable `GOOGLE_CREDENTIALS` y ajusta `sheets.ts` para leerlo
+- ✅ **Supabase conectado** — Todos los módulos usan Supabase cuando está configurado
+- ✅ **`textoMision`** — Campo nuevo en ConfigVisual para el texto de misión
+- ✅ **Scroll inteligente** — Chat principal y allanamientos: auto-scroll solo si estás al final
+- ✅ **JWT auto-redirect** — El layout detecta tokens expirados y redirige al login
+- ✅ **Notificaciones** — Badge en la campana con tickets abiertos y allanamientos pendientes (polling 30s)
+- ✅ **Módulo Operativos** — Página completa con editor de bloques, filtros y flujo de aprobación

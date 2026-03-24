@@ -1,6 +1,6 @@
 'use client'
-import { useEffect, useState } from 'react'
-import { Save, RefreshCw, CheckCircle, AlertCircle, RotateCcw, Palette, Image, Type, Bell, Key, Users, Globe } from 'lucide-react'
+import { useEffect, useState, useRef, useCallback } from 'react'
+import { Save, RefreshCw, CheckCircle, AlertCircle, RotateCcw, Palette, Image, Type, Bell, Key, Users, Globe, Edit3, Eye, X } from 'lucide-react'
 import { getConfigVisual, setConfigVisual, resetConfigVisual, getInvites, crearInvite, borrarInvite } from '@/lib/client'
 
 type Tab = 'identidad'|'colores'|'fondos'|'banner'|'website'|'invitaciones'
@@ -10,13 +10,101 @@ function Toast({ msg, ok, onClose }:{msg:string;ok:boolean;onClose:()=>void}) {
   return <div className={`fixed bottom-5 right-5 z-[100] flex items-center gap-2 px-4 py-3 border font-mono text-xs ${ok?'bg-green-900/40 border-green-700 text-green-300':'bg-red-900/40 border-red-700 text-red-300'}`}>{ok?<CheckCircle size={13}/>:<AlertCircle size={13}/>}{msg}</div>
 }
 
-function ColorInput({ label, value, onChange }: {label:string;value:string;onChange:(v:string)=>void}) {
+function ColorInput({ label, value, onChange, disabled }: {label:string;value:string;onChange:(v:string)=>void;disabled?:boolean}) {
   return (
     <div>
       <label className="label">{label}</label>
       <div className="flex gap-2 items-center">
-        <input type="color" value={value||'#000000'} onChange={e=>onChange(e.target.value)} className="w-10 h-10 border border-bg-border bg-bg-surface cursor-pointer p-0.5"/>
-        <input className="input flex-1 font-mono text-xs py-2" value={value} onChange={e=>onChange(e.target.value)} placeholder="#1B6FFF"/>
+        <input type="color" value={value||'#000000'} onChange={e=>onChange(e.target.value)} className="w-10 h-10 border border-bg-border bg-bg-surface cursor-pointer p-0.5" disabled={disabled}/>
+        <input className="input flex-1 font-mono text-xs py-2" value={value} onChange={e=>onChange(e.target.value)} placeholder="#1B6FFF" disabled={disabled}/>
+      </div>
+    </div>
+  )
+}
+
+// Live edit modal for Misión y Valores
+function MisionEditor({ config, onSave, onClose }: { config: any; onSave: (v: any) => Promise<void>; onClose: () => void }) {
+  const [texto, setTexto] = useState(config.descripcionDivision || '')
+  const [titulo, setTitulo] = useState(config.textoMision || 'Misión y Valores')
+  const [saving, setSaving] = useState(false)
+  const [preview, setPreview] = useState(false)
+
+  async function save() {
+    setSaving(true)
+    try {
+      await onSave({ descripcionDivision: texto, textoMision: titulo })
+      onClose()
+    } catch { } finally { setSaving(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[200] bg-black/80 flex items-center justify-center p-4" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="bg-bg-card border border-bg-border w-full max-w-2xl flex flex-col" style={{ maxHeight: '90vh' }}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-bg-border shrink-0">
+          <div>
+            <span className="section-tag">// Edición en Vivo</span>
+            <p className="font-display text-sm font-semibold tracking-wider uppercase text-tx-primary mt-0.5">Misión y Valores</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setPreview(p => !p)}
+              className={`flex items-center gap-1.5 font-mono text-[9px] uppercase px-3 py-1.5 border transition-all ${preview ? 'border-accent-blue text-accent-blue bg-accent-blue/10' : 'border-bg-border text-tx-muted hover:text-tx-secondary'}`}>
+              {preview ? <Edit3 size={10} /> : <Eye size={10} />}
+              {preview ? 'Editar' : 'Preview'}
+            </button>
+            <button onClick={onClose} className="text-tx-muted hover:text-tx-primary"><X size={15} /></button>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-5">
+          {preview ? (
+            /* Preview mode — as it appears on the public page */
+            <div className="bg-[#0a0c10] rounded border border-bg-border p-8 flex flex-col gap-4">
+              <div>
+                <p className="font-mono text-[9px] tracking-widest uppercase text-accent-blue mb-1">// Declaración Institucional</p>
+                <h2 className="font-display text-3xl font-bold tracking-wider uppercase text-white">{titulo || 'Misión y Valores'}</h2>
+              </div>
+              <p className="text-sm text-gray-300 leading-relaxed max-w-md">{texto || 'Escribe aquí la descripción...'}</p>
+              <div className="mt-2">
+                <div className="inline-flex items-center gap-2 bg-accent-blue text-white font-mono text-[9px] uppercase px-4 py-2">
+                  🔒 Ingresar al Sistema →
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-4">
+              <div>
+                <label className="label">Título de la sección</label>
+                <input className="input" value={titulo} onChange={e => setTitulo(e.target.value)}
+                  placeholder="Misión y Valores" />
+                <p className="font-mono text-[8px] text-tx-dim mt-1">Aparece como encabezado grande en la página pública</p>
+              </div>
+              <div>
+                <label className="label">Texto de la misión</label>
+                <textarea
+                  className="input min-h-48 resize-y text-sm leading-relaxed"
+                  value={texto}
+                  onChange={e => setTexto(e.target.value)}
+                  placeholder="La FIB es la principal agencia de inteligencia e investigación federal..."
+                />
+                <p className="font-mono text-[8px] text-tx-dim mt-1">{texto.length} caracteres · Visible en la sección pública de Misión</p>
+              </div>
+              <div className="bg-bg-surface border border-bg-border p-3">
+                <p className="font-mono text-[8px] text-tx-muted uppercase mb-1.5">Vista rápida</p>
+                <div className="border-l-2 border-accent-blue pl-3">
+                  <p className="font-display text-sm font-bold tracking-widest uppercase text-tx-primary">{titulo || 'Misión y Valores'}</p>
+                  <p className="text-xs text-tx-secondary mt-1 leading-relaxed line-clamp-3">{texto || '(sin texto)'}</p>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="px-5 py-4 border-t border-bg-border flex gap-2 justify-end shrink-0">
+          <button onClick={onClose} className="btn-ghost py-2 px-4">Cancelar</button>
+          <button onClick={save} disabled={saving} className="btn-primary py-2">
+            <Save size={12} />{saving ? 'Guardando...' : 'Guardar cambios'}
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -33,9 +121,10 @@ export default function ConfigPage() {
   const [invLoading, setInvLoading] = useState(false)
   const [invForm, setInvForm] = useState({ rol:'federal_agent', maxUsos:1, nombre:'' })
   const [copied,  setCopied]  = useState('')
+  const [showMisionEditor, setShowMisionEditor] = useState(false)
 
-  const isCS = user?.rol === 'command_staff'
-  const isSuperv = ['command_staff','supervisory'].includes(user?.rol)
+  const isCS    = user?.rol === 'command_staff'
+  const isSuperv= ['command_staff','supervisory'].includes(user?.rol)
 
   useEffect(()=>{ const u=localStorage.getItem('fib_user'); if(u) setUser(JSON.parse(u)) },[])
   useEffect(()=>{
@@ -54,6 +143,13 @@ export default function ConfigPage() {
     catch(e:any) { setToast({msg:e.message,ok:false}) } finally { setSaving(false) }
   }
 
+  async function guardarParcial(partial: any) {
+    const newConfig = { ...config, ...partial }
+    setConfigS(newConfig)
+    await setConfigVisual(newConfig)
+    setToast({ msg: '✅ Guardado', ok: true })
+  }
+
   async function restablecer() {
     if (!confirm('¿Restablecer configuración?')) return
     try { await resetConfigVisual(); const c=await getConfigVisual(); setConfigS(c); setToast({msg:'✅ Restablecido',ok:true}) } catch {}
@@ -68,29 +164,49 @@ export default function ConfigPage() {
   if (loading||!config) return <div className="flex items-center justify-center h-48"><p className="font-mono text-xs text-tx-muted">Cargando...</p></div>
 
   const TABS = [
-    {id:'identidad'   as Tab,icon:Type,   label:'Identidad'},
-    {id:'colores'     as Tab,icon:Palette,label:'Colores'},
-    {id:'fondos'      as Tab,icon:Image,  label:'Fondos'},
-    {id:'banner'      as Tab,icon:Bell,   label:'Banner'},
-    {id:'website'     as Tab,icon:Globe,  label:'Website'},
-    {id:'invitaciones'as Tab,icon:Key,    label:'Invitaciones'},
+    {id:'identidad'    as Tab, icon:Type,    label:'Identidad'},
+    {id:'colores'      as Tab, icon:Palette,  label:'Colores'},
+    {id:'fondos'       as Tab, icon:Image,    label:'Fondos'},
+    {id:'banner'       as Tab, icon:Bell,     label:'Banner'},
+    {id:'website'      as Tab, icon:Globe,    label:'Website'},
+    {id:'invitaciones' as Tab, icon:Key,      label:'Invitaciones'},
   ]
 
   return (
     <div className="max-w-4xl mx-auto">
       {toast && <Toast msg={toast.msg} ok={toast.ok} onClose={()=>setToast(null)}/>}
+      {showMisionEditor && isCS && (
+        <MisionEditor config={config} onSave={guardarParcial} onClose={() => setShowMisionEditor(false)} />
+      )}
 
       <div className="flex items-center justify-between mb-5">
-        <div className="page-header mb-0"><span className="section-tag">// Configuración</span><h1 className="font-display text-xl font-semibold tracking-wider uppercase text-tx-primary mt-0.5">Panel de Configuración</h1></div>
+        <div className="page-header mb-0">
+          <span className="section-tag">// Configuración</span>
+          <h1 className="font-display text-xl font-semibold tracking-wider uppercase text-tx-primary mt-0.5">Panel de Configuración</h1>
+        </div>
         {isCS && (
           <div className="flex gap-2">
             <button onClick={restablecer} className="btn-ghost py-2 px-3 text-[9px]"><RotateCcw size={12}/>Reset</button>
-            <button onClick={guardar} disabled={saving} className="btn-primary py-2"><Save size={12}/>{saving?'Guardando...':'Guardar'}</button>
+            <button onClick={guardar} disabled={saving} className="btn-primary py-2"><Save size={12}/>{saving?'Guardando...':'Guardar todo'}</button>
           </div>
         )}
       </div>
 
-      {!isCS && <div className="card p-3 mb-5 border-yellow-800/40 bg-yellow-900/10"><p className="font-mono text-xs text-yellow-400">Solo Command Staff puede modificar la configuración global. Puedes ver los valores actuales.</p></div>}
+      {!isCS && <div className="card p-3 mb-5 border-yellow-800/40 bg-yellow-900/10"><p className="font-mono text-xs text-yellow-400">Solo Command Staff puede modificar la configuración global.</p></div>}
+
+      {/* Quick action — Misión y Valores */}
+      {isCS && (
+        <div className="card p-4 mb-5 flex items-center justify-between">
+          <div>
+            <p className="font-mono text-[9px] uppercase tracking-widest text-accent-blue mb-0.5">Edición rápida</p>
+            <p className="text-sm text-tx-primary font-medium">Misión y Valores</p>
+            <p className="font-mono text-[9px] text-tx-muted mt-0.5">Edita el texto visible en la página pública</p>
+          </div>
+          <button onClick={() => setShowMisionEditor(true)} className="btn-primary py-2 px-4">
+            <Edit3 size={12} /> Editar en vivo
+          </button>
+        </div>
+      )}
 
       <div className="flex border-b border-bg-border mb-5 overflow-x-auto">
         {TABS.map(t=>(
@@ -107,7 +223,18 @@ export default function ConfigPage() {
           <div className="card p-5 flex flex-col gap-4">
             <span className="section-tag">// División</span>
             <div><label className="label">Nombre</label><input className="input" value={config.nombreDivision||''} onChange={setE('nombreDivision')} disabled={!isCS}/></div>
-            <div><label className="label">Descripción</label><textarea className="input min-h-20 resize-none text-sm" value={config.descripcionDivision||''} onChange={setE('descripcionDivision')} disabled={!isCS}/></div>
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="label mb-0">Descripción / Misión</label>
+                {isCS && (
+                  <button onClick={() => setShowMisionEditor(true)} className="flex items-center gap-1 font-mono text-[8px] uppercase text-accent-blue hover:text-accent-blue/80 transition-colors">
+                    <Edit3 size={9}/> Editar en vivo
+                  </button>
+                )}
+              </div>
+              <textarea className="input min-h-20 resize-none text-sm" value={config.descripcionDivision||''} onChange={setE('descripcionDivision')} disabled={!isCS}
+                placeholder="Descripción visible en la página pública..."/>
+            </div>
             <div>
               <label className="label">URL del Logo</label>
               <div className="flex gap-3 items-start">
@@ -124,9 +251,9 @@ export default function ConfigPage() {
         <div className="card p-5 flex flex-col gap-4">
           <span className="section-tag">// Paleta</span>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <ColorInput label="Color Primario" value={config.colorPrimario||'#1B6FFF'} onChange={v=>isCS&&set('colorPrimario')(v)}/>
-            <ColorInput label="Color Acento"   value={config.colorAcento||'#00C4FF'}   onChange={v=>isCS&&set('colorAcento')(v)}/>
-            <ColorInput label="Color Sidebar"  value={config.colorSidebar||'#101820'}  onChange={v=>isCS&&set('colorSidebar')(v)}/>
+            <ColorInput label="Color Primario" value={config.colorPrimario||'#1B6FFF'} onChange={v=>isCS&&set('colorPrimario')(v)} disabled={!isCS}/>
+            <ColorInput label="Color Acento"   value={config.colorAcento||'#00C4FF'}   onChange={v=>isCS&&set('colorAcento')(v)} disabled={!isCS}/>
+            <ColorInput label="Color Sidebar"  value={config.colorSidebar||'#101820'}  onChange={v=>isCS&&set('colorSidebar')(v)} disabled={!isCS}/>
           </div>
           <div className="flex gap-3 mt-2">
             <button style={{background:config.colorPrimario}} className="px-4 py-2 text-white font-mono text-xs tracking-widest uppercase">Primario</button>
@@ -186,7 +313,14 @@ export default function ConfigPage() {
       {tab==='website' && (
         <div className="flex flex-col gap-4">
           <div className="card p-5 flex flex-col gap-4">
-            <span className="section-tag">// Textos de la Página Pública</span>
+            <div className="flex items-center justify-between">
+              <span className="section-tag">// Textos de la Página Pública</span>
+              {isCS && (
+                <button onClick={() => setShowMisionEditor(true)} className="flex items-center gap-1 font-mono text-[8px] uppercase text-accent-blue hover:text-accent-blue/80 transition-colors border border-accent-blue/30 px-2 py-1">
+                  <Edit3 size={9}/> Misión (edición en vivo)
+                </button>
+              )}
+            </div>
             <div><label className="label">Título Hero</label><input className="input" value={config.textoHero||''} onChange={setE('textoHero')} disabled={!isCS} placeholder="Federal Investigation Bureau"/></div>
             <div><label className="label">Subtítulo Hero</label><input className="input" value={config.textoSubhero||''} onChange={setE('textoSubhero')} disabled={!isCS} placeholder="Sistema centralizado de gestión..."/></div>
           </div>
@@ -229,10 +363,10 @@ export default function ConfigPage() {
               <button onClick={loadInvites} className="text-tx-muted hover:text-tx-primary"><RefreshCw size={12} className={invLoading?'animate-spin':''}/></button>
             </div>
             <table className="w-full">
-              <thead><tr className="border-b border-bg-border">{['Código','Rol','Nombre','Usos','Por','Fecha','Usado por','Estado',''].map(h=><th key={h} className="table-head">{h}</th>)}</tr></thead>
+              <thead><tr className="border-b border-bg-border">{['Código','Rol','Nombre','Usos','Por','Fecha','Estado',''].map(h=><th key={h} className="table-head">{h}</th>)}</tr></thead>
               <tbody>
-                {invLoading ? <tr><td colSpan={9} className="text-center py-6 font-mono text-xs text-tx-muted">Cargando...</td></tr>
-                : invites.length===0 ? <tr><td colSpan={9} className="text-center py-6 font-mono text-xs text-tx-muted">Sin códigos</td></tr>
+                {invLoading ? <tr><td colSpan={8} className="text-center py-6 font-mono text-xs text-tx-muted">Cargando...</td></tr>
+                : invites.length===0 ? <tr><td colSpan={8} className="text-center py-6 font-mono text-xs text-tx-muted">Sin códigos</td></tr>
                 : invites.map(inv=>(
                   <tr key={inv.codigo} className={`table-row ${inv.agotado?'opacity-40':''}`}>
                     <td className="table-cell">
@@ -246,7 +380,6 @@ export default function ConfigPage() {
                     <td className="table-cell font-mono text-xs text-tx-muted">{inv.usos}/{inv.maxUsos}</td>
                     <td className="table-cell text-xs text-tx-secondary">{inv.creadoPor}</td>
                     <td className="table-cell font-mono text-[9px] text-tx-muted whitespace-nowrap">{new Date(inv.creadoEn).toLocaleDateString('es')}</td>
-                    <td className="table-cell text-xs text-tx-muted max-w-24 truncate">{inv.usadoPor?.join(', ')||'—'}</td>
                     <td className="table-cell"><span className={`tag border ${inv.agotado?'border-gray-700 text-gray-500':'border-green-700 text-green-400'}`}>{inv.agotado?'Agotado':'Activo'}</span></td>
                     <td className="table-cell">{isSuperv&&<button onClick={()=>borrarInvite(inv.codigo).then(loadInvites)} className="text-tx-muted hover:text-red-400 font-mono text-[9px]">✕</button>}</td>
                   </tr>

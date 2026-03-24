@@ -1,10 +1,17 @@
 'use client'
 import Image from 'next/image'
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { usePathname } from 'next/navigation'
 import { LayoutDashboard, Users, FolderOpen, Car, FileSearch, Ticket, MessageSquare, FolderArchive, Shield, Settings, LogOut, Menu, X, Bell, ChevronRight } from 'lucide-react'
 import { useTheme } from '@/lib/theme-context'
+
+function isTokenExpired(token: string): boolean {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]))
+    return Date.now() / 1000 > payload.exp
+  } catch { return true }
+}
 
 const NAV_GROUPS = [
   { label:'Principal', items:[
@@ -37,14 +44,65 @@ const ROL_COLOR: Record<string,string> = {
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false)
   const [user, setUser] = useState<any>(null)
+  const [notifCount, setNotifCount] = useState(0)
+  const [showNotifDot, setShowNotifDot] = useState(false)
   const pathname = usePathname()
   const { theme } = useTheme()
+  const pollingRef = useRef<ReturnType<typeof setInterval>|null>(null)
 
+  // Check token and load user
   useEffect(() => {
-    if (!localStorage.getItem('fib_token')) { window.location.href = '/login'; return }
+    const token = localStorage.getItem('fib_token')
+    if (!token || isTokenExpired(token)) {
+      localStorage.clear()
+      window.location.href = '/login'
+      return
+    }
     const u = localStorage.getItem('fib_user')
     if (u) setUser(JSON.parse(u))
   }, [])
+
+  // Periodic token validity check (every 60s)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const token = localStorage.getItem('fib_token')
+      if (!token || isTokenExpired(token)) {
+        localStorage.clear()
+        window.location.href = '/login'
+      }
+    }, 60_000)
+    return () => clearInterval(interval)
+  }, [])
+
+  // Notification polling: check for pending tickets + allanamientos every 30s
+  const pollNotifications = useCallback(async () => {
+    const token = localStorage.getItem('fib_token')
+    if (!token) return
+    try {
+      const [ticketsRes, allRes] = await Promise.all([
+        fetch('/api/tickets?estado=abierto', { headers: { Authorization: `Bearer ${token}` } }),
+        fetch('/api/allanamientos?estado=pendiente', { headers: { Authorization: `Bearer ${token}` } }),
+      ])
+      const tickets = ticketsRes.ok ? await ticketsRes.json() : []
+      const alls    = allRes.ok    ? await allRes.json()    : []
+      const count   = (Array.isArray(tickets) ? tickets.length : 0) + (Array.isArray(alls) ? alls.length : 0)
+      setNotifCount(count)
+      setShowNotifDot(count > 0)
+    } catch { /* silent */ }
+  }, [])
+
+  useEffect(() => {
+    pollNotifications()
+    pollingRef.current = setInterval(pollNotifications, 30_000)
+    return () => { if (pollingRef.current) clearInterval(pollingRef.current) }
+  }, [pollNotifications])
+
+  // Reset dot when visiting tickets or allanamientos
+  useEffect(() => {
+    if (pathname.includes('tickets') || pathname.includes('allanamientos')) {
+      setShowNotifDot(false)
+    }
+  }, [pathname])
 
   const logout = () => { localStorage.clear(); window.location.href = '/login' }
 
@@ -133,7 +191,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{backgroundColor:theme.accentColor}}/>
               <span className="font-mono text-[8px] tracking-widest" style={{color:theme.accentColor}}>ONLINE</span>
             </div>
-            <button className="text-tx-muted hover:text-tx-primary transition-colors"><Bell size={14}/></button>
+            <button className="relative text-tx-muted hover:text-tx-primary transition-colors" title={notifCount > 0 ? `${notifCount} pendiente(s)` : 'Sin pendientes'}>
+              <Bell size={14}/>
+              {showNotifDot && (
+                <span className="absolute -top-1 -right-1 w-3.5 h-3.5 flex items-center justify-center text-[7px] font-bold rounded-full" style={{ backgroundColor: theme.accentColor, color: '#000' }}>
+                  {notifCount > 9 ? '9+' : notifCount}
+                </span>
+              )}
+            </button>
           </div>
         </header>
 

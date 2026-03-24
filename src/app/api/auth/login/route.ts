@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import bcrypt from 'bcryptjs'
-import { DB } from '@/lib/db'
+import { getDB } from '@/lib/db'
 import { signToken, err, unauthorized } from '@/lib/auth'
 import { logLogin } from '@/lib/webhook'
 
 export async function POST(req: NextRequest) {
   const { username, password } = await req.json().catch(()=>({}))
   if (!username || !password) return err('username y password requeridos')
+  const db = await getDB()
   let found = null
-  for (const u of DB.users.values())
+  for (const u of db.users.values())
     if (u.username.toLowerCase() === username.toLowerCase()) { found = u; break }
   if (!found) return unauthorized()
   if (!found.activo) return err('Cuenta desactivada', 403)

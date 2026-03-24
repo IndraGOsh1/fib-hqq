@@ -68,11 +68,25 @@ function ModalAllanamiento({ itemId, user, onClose, onAction }: { itemId:string;
   const [sending, setSending] = useState(false)
   const [tab,     setTab]     = useState<'info'|'chat'|'pdf'>('info')
   const bottomRef = useRef<HTMLDivElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const atBottomRef = useRef(true)
   const isSuperv = ['command_staff','supervisory'].includes(user?.rol)
 
   const load = useCallback(async()=>{ try { const d = await getAllanamiento(itemId); setItem(d) } catch {} finally { setLoading(false) } },[itemId])
   useEffect(()=>{ load() },[load])
-  useEffect(()=>{ bottomRef.current?.scrollIntoView({behavior:'smooth'}) },[item?.mensajes])
+
+  // Smart scroll: only auto-scroll if user is pinned to bottom
+  useEffect(()=>{
+    if (atBottomRef.current) {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
+  },[item?.mensajes])
+
+  function onChatScroll() {
+    const el = scrollRef.current
+    if (!el) return
+    atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+  }
 
   async function doAction(accion:string,extra?:any) {
     setSending(true)
@@ -237,7 +251,7 @@ ${item.firmas?.length===0?`
         {/* CHAT */}
         {tab==='chat' && (
           <div className="flex-1 flex flex-col overflow-hidden">
-            <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-2">
+            <div ref={scrollRef} onScroll={onChatScroll} className="flex-1 overflow-y-auto p-4 flex flex-col gap-2">
               {item.mensajes?.map((m:any)=>(
                 <div key={m.id} className={`${m.tipo==='sistema'||m.tipo==='accion'?'flex justify-center':'flex gap-2.5'}`}>
                   {m.tipo==='sistema'||m.tipo==='accion' ? (
