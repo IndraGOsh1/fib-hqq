@@ -55,7 +55,7 @@ export async function PATCH(req: NextRequest, { params }:P) {
     a.motivoDenegacion = body.motivo || 'Sin motivo'
     a.mensajes.push({ id:uuid().slice(0,8), autor:'SYSTEM', nombre:'Sistema',
       contenido:`❌ Denegado por ${u.nombre||u.username}: ${a.motivoDenegacion}`, fecha:now, tipo:'accion' })
-    logAllanamiento('Denegado', a.numeroSolicitud, u.username, a.motivoDenegacion)
+    logAllanamiento('Denegado', a.numeroSolicitud ?? undefined, u.username, a.motivoDenegacion ?? undefined)
   }
 
   // Ejecutar
