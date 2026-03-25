@@ -64,7 +64,6 @@ export async function PATCH(req: NextRequest, { params }: P) {
   }
 
   const next = { ...current, answers: nextAnswers }
-  db.submissions.set(submissionId, next)
   await persistFormSubmission(next)
   logExtra('🧰 Respuesta editada', `${u.username} editó respuesta ${submissionId} del formulario ${id}`)
   return NextResponse.json({ mensaje: '✅ Respuesta actualizada', submission: next })
@@ -88,7 +87,6 @@ export async function DELETE(req: NextRequest, { params }: P) {
   if (!current || current.formId !== id) return err('Respuesta no encontrada', 404)
 
   const next = { ...current, state: 'removed' as const }
-  db.submissions.set(submissionId, next)
   await persistFormSubmission(next)
   logExtra('🧹 Respuesta eliminada', `${u.username} retiró respuesta ${submissionId} del formulario ${id}`)
   return NextResponse.json({ mensaje: '✅ Respuesta eliminada' })

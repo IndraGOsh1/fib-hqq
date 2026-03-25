@@ -63,6 +63,7 @@ const ROL_COLOR: Record<string,string> = {
 }
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const [checking, setChecking] = useState(true)
   const [open, setOpen] = useState(false)
   const [user, setUser] = useState<any>(null)
   const [notifCount, setNotifCount] = useState(0)
@@ -74,30 +75,50 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const pollingRef = useRef<ReturnType<typeof setInterval>|null>(null)
 
   // Check token and load user from backend to keep session state consistent.
+  // 'checking' starts true so zero dashboard HTML renders until auth is confirmed.
   useEffect(() => {
     let alive = true
-    const validate = async () => {
+
+    const clearAndRedirect = () => {
+      localStorage.removeItem('fib_token')
+      localStorage.removeItem('fib_user')
+      window.location.href = '/login'
+    }
+
+    // Retry up to 3 times (1.5s apart) for transient server/network errors.
+    // Only log out immediately if the server definitively rejects the token (401/403).
+    const validate = async (attempt = 0): Promise<void> => {
+      if (!alive) return
+
       const token = localStorage.getItem('fib_token')
-      if (!token || isTokenExpired(token)) {
-        localStorage.removeItem('fib_token')
-        localStorage.removeItem('fib_user')
-        window.location.href = '/login'
-        return
+      if (!token || isTokenExpired(token)) { clearAndRedirect(); return }
+
+      let res: Response | null = null
+      try {
+        res = await fetch('/api/auth/me', { headers: { Authorization: `Bearer ${token}` } })
+      } catch {
+        // Network error — retry
+        if (attempt < 3) { setTimeout(() => validate(attempt + 1), 1500); return }
+        clearAndRedirect(); return
       }
 
-      try {
-        const res = await fetch('/api/auth/me', { headers: { Authorization: `Bearer ${token}` } })
-        if (!res.ok) throw new Error('unauthorized')
-        const me = await readJsonSafely<any>(res, null)
-        if (!me) throw new Error('invalid-session')
-        if (!alive) return
-        localStorage.setItem('fib_user', JSON.stringify(me))
-        setUser(me)
-      } catch {
-        localStorage.removeItem('fib_token')
-        localStorage.removeItem('fib_user')
-        window.location.href = '/login'
+      if (!res.ok) {
+        if (res.status === 401 || res.status === 403) { clearAndRedirect(); return }
+        // 5xx / unexpected — retry
+        if (attempt < 3) { setTimeout(() => validate(attempt + 1), 1500); return }
+        clearAndRedirect(); return
       }
+
+      const me = await readJsonSafely<any>(res, null)
+      if (!me) {
+        if (attempt < 3) { setTimeout(() => validate(attempt + 1), 1500); return }
+        clearAndRedirect(); return
+      }
+
+      if (!alive) return
+      localStorage.setItem('fib_user', JSON.stringify(me))
+      setUser(me)
+      setChecking(false)
     }
 
     validate()
@@ -156,9 +177,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
   }, [pathname])
 
-  const logout = () => {
+  const logout = async () => {
     localStorage.removeItem('fib_token')
     localStorage.removeItem('fib_user')
+    // Clear the httpOnly session cookie server-side so middleware blocks immediately
+    try { await fetch('/api/auth/logout', { method: 'POST' }) } catch { /* ignore */ }
     window.location.href = '/login'
   }
 
@@ -168,6 +191,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
   const accentStyle = { color: theme.accentColor }
   const accentBg    = { backgroundColor: `${theme.accentColor}18`, borderColor: theme.accentColor }
+
+  // Block ALL rendering — including nav/children HTML — until session is verified.
+  // This prevents microsecond-window leaks to unauthenticated requests/scripts.
+  if (checking) {
+    return (
+      <div className="min-h-screen bg-bg-base flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3 opacity-40">
+          <div className="w-5 h-5 border border-accent-blue border-t-transparent rounded-full animate-spin" />
+          <span className="font-mono text-[9px] tracking-widest uppercase text-tx-muted">Verificando sesión…</span>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-bg-base flex">

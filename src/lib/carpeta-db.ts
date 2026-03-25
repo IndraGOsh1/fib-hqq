@@ -1,4 +1,4 @@
-import { SupabaseMap } from './supabase-map'
+import { SupabaseMap, persistentMapSet } from './supabase-map'
 import { createClient } from '@supabase/supabase-js'
 import { getSecret } from './secrets'
 
@@ -51,7 +51,7 @@ declare global {
   var __fibCarpetasInit: Promise<Map<string, CarpetaPersonal>> | undefined
 }
 
-const isSupabaseEnabled = !!(process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL)
+const isSupabaseEnabled = !!(getSecret('SUPABASE_URL') || process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL)
 
 let _carpetaClient: ReturnType<typeof createClient> | null = null
 
@@ -89,7 +89,9 @@ export async function getCarpetasDB() {
 
 export async function getCarpeta(username: string): Promise<CarpetaPersonal> {
   const db = await getCarpetasDB()
-  if (!db.has(username)) db.set(username, { username, anotaciones: [], documentos: [], hilos: [] })
+  if (!db.has(username)) {
+    await persistentMapSet(db, username, { username, anotaciones: [], documentos: [], hilos: [] })
+  }
   return db.get(username) as CarpetaPersonal
 }
 
@@ -99,10 +101,5 @@ export function canAccessCarpetaHilo(hilo: HiloCarpeta, viewerUsername: string, 
 
 export async function persistCarpeta(carpeta: CarpetaPersonal) {
   const db = await getCarpetasDB()
-  db.set(carpeta.username, carpeta)
-  if (!isSupabaseEnabled) return
-  const client = getCarpetaClient()
-  if (!client) return
-  const { error } = await (client.from('carpetas') as any).upsert(carpeta as any)
-  if (error) throw new Error(`[carpeta] No se pudo persistir carpeta: ${error.message}`)
+  await persistentMapSet(db, carpeta.username, carpeta)
 }

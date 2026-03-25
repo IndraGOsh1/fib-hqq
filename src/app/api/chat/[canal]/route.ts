@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { v4 as uuid } from 'uuid'
-import { getUser, unauthorized, forbidden, notFound } from '@/lib/auth'
+import { getUser, unauthorized, forbidden, notFound, isUserFrozen, frozen } from '@/lib/auth'
 import { getChatDB, canAccess, markRead, getMessages, appendMessage, type Mensaje } from '@/lib/chat-db'
 import { getDB } from '@/lib/db'
 import { getRequestIp, rateLimit } from '@/lib/security'
@@ -20,6 +20,7 @@ export async function GET(req: NextRequest, { params }:P) {
 
 export async function POST(req: NextRequest, { params }:P) {
   const u = getUser(req); if (!u) return unauthorized()
+  if (await isUserFrozen(u.id)) return frozen()
   const ip = getRequestIp(req)
   const limit = rateLimit({ key: `chat:send:${u.username}:${ip}`, max: 20, windowMs: 10_000 })
   if (!limit.ok) {

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { v4 as uuid } from 'uuid'
-import { getUser, unauthorized, err } from '@/lib/auth'
-import { getTicketsDB, nextTicketNumber, type Ticket } from '@/lib/tickets-db'
+import { getUser, unauthorized, err, isUserFrozen, frozen } from '@/lib/auth'
+import { getTicketsDB, nextTicketNumber, persistTicket, type Ticket } from '@/lib/tickets-db'
 
 export async function GET(req: NextRequest) {
   const u = getUser(req); if (!u) return unauthorized()
@@ -20,6 +20,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const u = getUser(req); if (!u) return unauthorized()
+  if (await isUserFrozen(u.id)) return frozen()
   const { titulo, descripcion, tipo, prioridad, tags } = await req.json().catch(()=>({}))
   if (!titulo?.trim() || !tipo) return err('titulo y tipo son requeridos')
 
@@ -34,6 +35,10 @@ export async function POST(req: NextRequest) {
     creadoEn:now, actualizadoEn:now, resueltoPor:null, resueltoEn:null,
     tags: Array.isArray(tags)?tags:[],
   }
-  TicketsDB.set(tkt.id, tkt)
+  try {
+    await persistTicket(tkt)
+  } catch {
+    return err('No se pudo persistir el ticket. Reintenta.', 503)
+  }
   return NextResponse.json({ mensaje:'✅ Ticket creado', id:tkt.id, numero:tkt.numeroTicket }, { status:201 })
 }

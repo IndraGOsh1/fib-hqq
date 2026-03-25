@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getUser, unauthorized, forbidden } from '@/lib/auth'
+import { getUser, unauthorized, forbidden, isUserFrozen, frozen } from '@/lib/auth'
 import { getChatDB, canAccess, getOrCreateDM, countUnreadDMs, createPrivateChannel, getLastMessage, getUnreadCount } from '@/lib/chat-db'
 import { getDB } from '@/lib/db'
 
@@ -23,6 +23,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const u = getUser(req); if (!u) return unauthorized()
+  if (await isUserFrozen(u.id)) return frozen()
   const { tipo, targetUsername, nombre, descripcion, participantes } = await req.json().catch(()=>({}))
   if (tipo === 'dm' && targetUsername) {
     const target = String(targetUsername).trim()

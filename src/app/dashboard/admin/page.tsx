@@ -115,6 +115,7 @@ export default function AdminPage() {
   const [callsignEdit, setCallsignEdit] = useState<Record<string, string>>({})
   const [userEdit, setUserEdit] = useState<Record<string, any>>({})
   const [vetoReason, setVetoReason] = useState<Record<string, string>>({})
+  const [freezeReason, setFreezeReason] = useState<Record<string, string>>({})
 
   const [formsData, setFormsData] = useState<{ forms: any[]; canManage: boolean; config?: any }>({ forms: [], canManage: false })
   const [builder, setBuilder] = useState<any>(EMPTY_FORM)
@@ -240,6 +241,22 @@ export default function AdminPage() {
       setToast({ msg: !vetado ? `Usuario vetado: ${username}` : `Veto retirado: ${username}`, ok: true })
       await loadUsers()
       setVetoReason((p) => ({ ...p, [id]: '' }))
+    } catch (e: any) {
+      setToast({ msg: e.message, ok: false })
+    }
+  }
+
+  async function toggleFreeze(id: string, username: string, congelado: boolean) {
+    const reason = freezeReason[id] || ''
+    if (!congelado && !reason.trim()) {
+      setToast({ msg: 'Indica motivo de la congelación', ok: false })
+      return
+    }
+    try {
+      await editarUser(id, { congelado: !congelado, congeladoReason: reason.trim() || undefined })
+      setToast({ msg: !congelado ? `Usuario congelado: ${username}` : `Congelación retirada: ${username}`, ok: true })
+      await loadUsers()
+      setFreezeReason((p) => ({ ...p, [id]: '' }))
     } catch (e: any) {
       setToast({ msg: e.message, ok: false })
     }
@@ -574,7 +591,7 @@ export default function AdminPage() {
                     {isCS && <td className="table-cell">{editing ? <input className="input text-xs py-1.5" value={draft.callsign} onChange={(e) => setUserEdit((p) => ({ ...p, [u.id]: { ...p[u.id], callsign: e.target.value } }))} /> : (u.callsign || '—')}</td>}
                     {isCS && <td className="table-cell">{editing ? <input className="input text-xs py-1.5" value={draft.agentNumber} onChange={(e) => setUserEdit((p) => ({ ...p, [u.id]: { ...p[u.id], agentNumber: e.target.value } }))} /> : (u.agentNumber || '—')}</td>}
                     {isCS && <td className="table-cell">{editing ? <input className="input text-xs py-1.5" value={draft.discordId} onChange={(e) => setUserEdit((p) => ({ ...p, [u.id]: { ...p[u.id], discordId: e.target.value } }))} /> : (u.discordId || '—')}</td>}
-                    <td className="table-cell"><span className={`tag border ${u.activo ? 'border-green-700 text-green-400' : 'border-gray-700 text-gray-500'}`}>{u.activo ? 'Activo' : 'Inactivo'}</span></td>
+                    <td className="table-cell"><span className={`tag border ${u.activo ? 'border-green-700 text-green-400' : 'border-gray-700 text-gray-500'}`}>{u.activo ? 'Activo' : 'Inactivo'}</span>{u.congelado && <span className="tag border border-cyan-700 text-cyan-400 ml-1" title={u.congeladoReason || ''}>Congelado</span>}</td>
                     {isCS && <td className="table-cell"><div className="flex gap-1.5 flex-wrap">
                       {!editing && <button onClick={() => startEditUser(u)} className="font-mono text-[8px] tracking-widest uppercase px-2 py-1 border border-accent-blue/40 text-accent-blue">Editar</button>}
                       {editing && <button onClick={() => saveUser(u.id)} className="font-mono text-[8px] tracking-widest uppercase px-2 py-1 border border-green-800 text-green-400">Guardar</button>}
@@ -582,6 +599,8 @@ export default function AdminPage() {
                       <button onClick={() => toggleUser(u.id, !u.activo)} className="font-mono text-[8px] tracking-widest uppercase px-2 py-1 border border-bg-border text-tx-secondary">{u.activo ? 'Desact.' : 'Activar'}</button>
                       <input className="input text-xs py-1 px-2 w-32" placeholder="Motivo veto" value={vetoReason[u.id] || ''} onChange={(e) => setVetoReason((p) => ({ ...p, [u.id]: e.target.value }))} />
                       <button onClick={() => toggleVeto(u.id, u.username, !!u.vetado)} className={`font-mono text-[8px] tracking-widest uppercase px-2 py-1 border ${u.vetado ? 'border-green-800 text-green-400' : 'border-red-800 text-red-400'}`}>{u.vetado ? 'Quitar veto' : 'Vetar'}</button>
+                      <input className="input text-xs py-1 px-2 w-36" placeholder="Motivo freeze" value={freezeReason[u.id] || ''} onChange={(e) => setFreezeReason((p) => ({ ...p, [u.id]: e.target.value }))} />
+                      <button onClick={() => toggleFreeze(u.id, u.username, !!u.congelado)} className={`font-mono text-[8px] tracking-widest uppercase px-2 py-1 border ${u.congelado ? 'border-green-800 text-green-400' : 'border-cyan-800 text-cyan-400'}`} title={u.congelado ? `Motivo: ${u.congeladoReason || '—'}` : 'Solo lectura: puede ver todo pero no escribir'}>{u.congelado ? 'Descongelar' : 'Congelar'}</button>
                       <button onClick={() => removeUser(u.id, u.username)} className="font-mono text-[8px] tracking-widest uppercase px-2 py-1 border border-red-800 text-red-400">Borrar</button>
                     </div></td>}
                   </tr>

@@ -28,7 +28,8 @@ export interface Ticket {
   tags:        string[]
 }
 
-import { SupabaseMap } from './supabase-map'
+import { SupabaseMap, persistentMapDelete, persistentMapSet } from './supabase-map'
+import { getSecret } from './secrets'
 
 declare global { var __fibTickets: Map<string, Ticket> | undefined }
 declare global { var __fibTicketsDB: Promise<Map<string, Ticket>> | undefined }
@@ -47,7 +48,7 @@ const initialTickets: Ticket[] = [
   }
 ]
 
-const isSupabaseEnabled = !!process.env.NEXT_PUBLIC_SUPABASE_URL || !!process.env.SUPABASE_URL
+const isSupabaseEnabled = !!(getSecret('SUPABASE_URL') || process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL)
 
 async function initTicketsDB() {
   if (isSupabaseEnabled) {
@@ -62,6 +63,16 @@ if (!global.__fibTicketsDB) {
 
 export async function getTicketsDB() {
   return global.__fibTicketsDB!
+}
+
+export async function persistTicket(ticket: Ticket) {
+  const db = await getTicketsDB()
+  await persistentMapSet(db, ticket.id, ticket)
+}
+
+export async function deleteTicketById(id: string) {
+  const db = await getTicketsDB()
+  await persistentMapDelete(db, id)
 }
 
 let _ticketsDB: Map<string, Ticket> | null = null

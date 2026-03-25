@@ -16,6 +16,11 @@ export interface User {
   vetoAt?:      string | null
   vetoBy?:      string | null
   clases?:      string[]
+  // Freeze: user can view everything but cannot perform any write/mutate action
+  congelado?:       boolean
+  congeladoReason?: string | null
+  congeladoAt?:     string | null
+  congeladoPor?:    string | null
 }
 
 export interface Invite {
@@ -50,7 +55,7 @@ declare global {
   var __fibDBInit: Promise<{ users: Map<string,User>; invites: Map<string,Invite> }> | undefined
 }
 
-const isSupabaseEnabled = !!(process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL)
+const isSupabaseEnabled = !!(getSecret('SUPABASE_URL') || process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL)
 
 let _adminClient: ReturnType<typeof createClient> | null = null
 
@@ -98,13 +103,14 @@ export async function persistUserAndInvite(user: User, invite: Invite) {
   const client = getAdminClient()
   if (!client) return
 
-  const [{ error: userErr }, { error: inviteErr }] = await Promise.all([
-    (client.from('users') as any).upsert(user as any),
-    (client.from('invites') as any).upsert(invite as any),
-  ])
-
+  const { error: userErr } = await (client.from('users') as any).upsert(user as any)
   if (userErr) throw new Error(`[db] No se pudo persistir usuario: ${userErr.message}`)
-  if (inviteErr) throw new Error(`[db] No se pudo persistir invite: ${inviteErr.message}`)
+
+  const { error: inviteErr } = await (client.from('invites') as any).upsert(invite as any)
+  if (!inviteErr) return
+
+  await (client.from('users') as any).delete().eq('id', user.id)
+  throw new Error(`[db] No se pudo persistir invite: ${inviteErr.message}`)
 }
 
 export async function persistUser(user: User) {

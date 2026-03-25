@@ -123,7 +123,7 @@ const DEFAULT: ConfigVisual = {
 import { createClient } from '@supabase/supabase-js'
 import { getSecret } from './secrets'
 
-const isSupabaseEnabled = !!(process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL)
+const isSupabaseEnabled = !!(getSecret('SUPABASE_URL') || process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL)
 const ROW_KEY = 'singleton'
 
 function getSupabase() {

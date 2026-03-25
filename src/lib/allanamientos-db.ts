@@ -41,7 +41,8 @@ export interface Allanamiento {
   actualizadoEn:    string
 }
 
-import { SupabaseMap } from './supabase-map'
+import { SupabaseMap, persistentMapDelete, persistentMapSet } from './supabase-map'
+import { getSecret } from './secrets'
 
 declare global {
   // eslint-disable-next-line no-var
@@ -49,7 +50,7 @@ declare global {
   var __fibAllanamientosDB: Promise<Map<string,Allanamiento>> | undefined
 }
 
-const isSupabaseEnabled = !!(process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL)
+const isSupabaseEnabled = !!(getSecret('SUPABASE_URL') || process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL)
 
 async function initAllanamientosDB() {
   if (isSupabaseEnabled) {
@@ -68,6 +69,16 @@ if (!global.__fibAllanamientosDB) {
 
 export async function getAllanamientosDB() {
   return global.__fibAllanamientosDB!
+}
+
+export async function persistAllanamiento(allanamiento: Allanamiento) {
+  const db = await getAllanamientosDB()
+  await persistentMapSet(db, allanamiento.id, allanamiento)
+}
+
+export async function deleteAllanamientoById(id: string) {
+  const db = await getAllanamientosDB()
+  await persistentMapDelete(db, id)
 }
 
 export const AllanamientosDB = new Proxy({} as Map<string, Allanamiento>, {

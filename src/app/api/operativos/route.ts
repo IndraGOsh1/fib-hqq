@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { v4 as uuid } from 'uuid'
-import { getUser, unauthorized, err } from '@/lib/auth'
-import { getOpsDB, type Operativo } from '@/lib/operativos-db'
+import { getUser, unauthorized, err, isUserFrozen, frozen } from '@/lib/auth'
+import { getOpsDB, persistOperativo, type Operativo } from '@/lib/operativos-db'
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
@@ -37,6 +37,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const u = getUser(req); if (!u) return unauthorized()
+  if (await isUserFrozen(u.id)) return frozen()
 
   const { titulo, descripcion, contenido, bloques, imagenes, tipo, clasificacion, unidad, tags } = await req.json().catch(() => ({}))
   if (!titulo?.trim() || !tipo) return err('titulo y tipo son requeridos')
@@ -64,6 +65,10 @@ export async function POST(req: NextRequest) {
     tags: Array.isArray(tags) ? tags : [],
   }
 
-  OpsDB.set(id, op)
+  try {
+    await persistOperativo(op)
+  } catch {
+    return err(`No se pudo persistir el ${tipo === 'operativo' ? 'operativo' : 'informe'}. Reintenta.`, 503)
+  }
   return NextResponse.json({ mensaje: `✅ ${tipo === 'operativo' ? 'Operativo' : 'Informe'} creado`, id, estado: estadoInicial }, { status: 201 })
 }

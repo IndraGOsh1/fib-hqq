@@ -135,11 +135,11 @@ export const logSancion = (agente: string, tipo: string, motivo: string, by: str
     ],
   })
 
-export const logRegistroImportante = (accion: 'Ascenso' | 'Descenso' | 'Sanción' | 'Veto', agente: string, by: string, detalle: string) =>
+export const logRegistroImportante = (accion: 'Ascenso' | 'Descenso' | 'Sanción' | 'Veto' | 'Freeze', agente: string, by: string, detalle: string) =>
   logWebhook({
     type: 'important',
     title: `📌 Registro Importante: ${accion}`,
-    color: accion === 'Ascenso' ? COLORS.green : accion === 'Descenso' ? COLORS.yellow : accion === 'Veto' ? COLORS.red : COLORS.orange,
+    color: accion === 'Ascenso' ? COLORS.green : accion === 'Descenso' ? COLORS.yellow : accion === 'Veto' ? COLORS.red : accion === 'Freeze' ? COLORS.blue : COLORS.orange,
     fields: [
       { name: 'Agente', value: agente, inline: true },
       { name: 'Por', value: by, inline: true },
@@ -172,9 +172,10 @@ export async function logAllanamientoAutorizadoCard(input: {
   solicitadoPor: string
   autorizadoPor: string
   observaciones?: string
+  previewUrl?: string
 }) {
   if (!ALLANAMIENTO_WEBHOOK) return
-  const imageUrl = buildAllanamientoStatusImage(input.numero, input.direccion, 'autorizado')
+  const imageUrl = input.previewUrl || buildAllanamientoStatusImage(input.numero, input.direccion, 'autorizado')
   const embed = {
     title: '✅ Allanamiento Aprobado',
     color: COLORS.green,
@@ -189,6 +190,35 @@ export async function logAllanamientoAutorizadoCard(input: {
     image: { url: imageUrl },
     timestamp: new Date().toISOString(),
     footer: { text: 'FIB HQ — Allanamientos' },
+  }
+
+  try {
+    await fetch(ALLANAMIENTO_WEBHOOK, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ embeds: [embed] }),
+    })
+  } catch {}
+}
+
+export async function logAllanamientoDocumentoGenerado(input: {
+  numero: string
+  direccion: string
+  generadoPor: string
+  previewUrl: string
+}) {
+  if (!ALLANAMIENTO_WEBHOOK) return
+  const embed = {
+    title: '📄 PDF de Allanamiento Generado',
+    color: COLORS.blue,
+    fields: [
+      { name: 'N° Solicitud', value: input.numero, inline: true },
+      { name: 'Generado por', value: input.generadoPor, inline: true },
+      { name: 'Dirección', value: input.direccion.slice(0, 1024), inline: false },
+    ],
+    image: { url: input.previewUrl },
+    timestamp: new Date().toISOString(),
+    footer: { text: 'FIB HQ — Documento operativo' },
   }
 
   try {

@@ -75,6 +75,11 @@ function ModalAllanamiento({ itemId, user, onClose, onAction }: { itemId:string;
   const atBottomRef = useRef(true)
   const isSuperv = ['command_staff','supervisory'].includes(user?.rol)
 
+  function extractImageUrl(raw: string) {
+    const match = String(raw || '').match(/https?:\/\/[^\s]+\.(?:png|jpg|jpeg|webp|gif)(?:\?[^\s]*)?/i)
+    return match ? match[0] : ''
+  }
+
   const load = useCallback(async()=>{ try { const d = await getAllanamiento(itemId); setItem(d) } catch {} finally { setLoading(false) } },[itemId])
   useEffect(()=>{ load() },[load])
 
@@ -195,7 +200,7 @@ ${item.firmas?.length===0?`
 <script>window.onload=()=>setTimeout(()=>window.print(),500)</script>
 </body></html>`
     const w = window.open('','_blank'); if (w) { w.document.write(html); w.document.close() }
-  editarAllanamiento(itemId,{accion:'generar_pdf'}).catch(()=>{})
+  editarAllanamiento(itemId,{accion:'generar_pdf'}).then(()=>load()).catch(()=>{})
   }
 
   if (loading) return <div className="modal-overlay"><div className="modal p-8 text-center font-mono text-xs text-tx-muted">Cargando...</div></div>
@@ -280,14 +285,30 @@ ${item.firmas?.length===0?`
             <div ref={scrollRef} onScroll={onChatScroll} className="flex-1 overflow-y-auto p-4 flex flex-col gap-2">
               {item.mensajes?.map((m:any)=>(
                 <div key={m.id} className={`${m.tipo==='sistema'||m.tipo==='accion'||m.tipo==='documento'?'flex justify-center':'flex gap-2.5'}`}>
-                  {m.tipo==='sistema'||m.tipo==='accion'||m.tipo==='documento' ? (
+                  {m.tipo==='sistema'||m.tipo==='accion' ? (
                     <div className="font-mono text-[8px] text-tx-muted italic py-0.5 px-3 bg-bg-surface border border-bg-border flex items-center gap-2">
                       <span>{m.contenido}</span>
+                    </div>
+                  ) : m.tipo === 'documento' ? (
+                    <div className="w-full border border-accent-blue/40 bg-accent-blue/10 p-3">
+                      <p className="font-mono text-[8px] uppercase tracking-widest text-accent-blue mb-1">Documento de Allanamiento</p>
+                      <p className="text-xs text-tx-secondary mb-2">{m.contenido}</p>
+                      {m.htmlSnapshot && (
+                        <a href={m.htmlSnapshot} target="_blank" rel="noreferrer" className="block border border-bg-border hover:opacity-90 transition-opacity">
+                          <img src={m.htmlSnapshot} alt="Vista previa del allanamiento" className="w-full max-h-72 object-cover" />
+                        </a>
+                      )}
+                      <p className="font-mono text-[8px] text-tx-muted mt-2">{new Date(m.fecha).toLocaleString('es')}</p>
                     </div>
                   ) : m.tipo === 'informe' ? (
                     <div className="w-full border border-cyan-800/50 bg-cyan-900/10 p-3">
                       <p className="font-mono text-[8px] uppercase tracking-widest text-cyan-400 mb-1">Informe de Hallazgo</p>
                       <p className="text-xs text-tx-primary whitespace-pre-wrap">{m.contenido}</p>
+                      {extractImageUrl(m.contenido) && (
+                        <a href={extractImageUrl(m.contenido)} target="_blank" rel="noreferrer" className="block border border-cyan-800/30 mt-2">
+                          <img src={extractImageUrl(m.contenido)} alt="Evidencia" className="w-full max-h-72 object-contain bg-black/20" />
+                        </a>
+                      )}
                       <p className="font-mono text-[8px] text-tx-muted mt-2">{m.nombre} · {new Date(m.fecha).toLocaleString('es')}</p>
                     </div>
                   ) : (

@@ -57,7 +57,8 @@ export interface Caso {
   clasificacion: 'interno' | 'confidencial'
 }
 
-import { SupabaseMap } from './supabase-map'
+import { SupabaseMap, persistentMapDelete, persistentMapSet } from './supabase-map'
+import { getSecret } from './secrets'
 
 declare global { var __fibCasos: Map<string, Caso> | undefined }
 declare global { var __fibCasosDB: Promise<Map<string, Caso>> | undefined }
@@ -82,7 +83,7 @@ const initialCasos: Caso[] = [
   }
 ]
 
-const isSupabaseEnabled = !!process.env.NEXT_PUBLIC_SUPABASE_URL || !!process.env.SUPABASE_URL
+const isSupabaseEnabled = !!(getSecret('SUPABASE_URL') || process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL)
 
 async function initCasosDB() {
   if (isSupabaseEnabled) {
@@ -97,6 +98,16 @@ if (!global.__fibCasosDB) {
 
 export async function getCasosDB() {
   return global.__fibCasosDB!
+}
+
+export async function persistCaso(caso: Caso) {
+  const db = await getCasosDB()
+  await persistentMapSet(db, caso.id, caso)
+}
+
+export async function deleteCasoById(id: string) {
+  const db = await getCasosDB()
+  await persistentMapDelete(db, id)
 }
 
 let _casosDB: Map<string, Caso> | null = null

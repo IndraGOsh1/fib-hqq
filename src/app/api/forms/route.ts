@@ -10,6 +10,7 @@ import {
   getFormsDB,
   persistFormDefinition,
   persistFormsConfig,
+  resetFormsStore,
   type FormDefinition,
   type FormField,
   type FormFieldType,
@@ -125,7 +126,6 @@ export async function POST(req: NextRequest) {
       updatedAt: new Date().toISOString(),
       updatedBy: u.username,
     }
-    db.config.set('global', next)
     await persistFormsConfig(next)
     logExtra('🧩 Configuración formularios', `${u.username} actualizó ajustes globales de formularios`)
     return NextResponse.json({ mensaje: '✅ Configuración global actualizada', config: next })
@@ -160,7 +160,6 @@ export async function POST(req: NextRequest) {
     if (form.allowedSubmitRoles.length === 0) return err('Define al menos un rol que pueda responder')
     if (form.allowedViewerKeys.length === 0) return err('Define al menos un permiso para ver respuestas')
     if (form.fields.length === 0) return err('Debes agregar al menos un campo')
-    db.forms.set(form.id, form)
     await persistFormDefinition(form)
     logExtra('🧾 Formulario creado', `${u.username} creó ${form.title} (${form.branch})`)
     return NextResponse.json({ mensaje: '✅ Formulario creado', form })
@@ -195,7 +194,6 @@ export async function POST(req: NextRequest) {
     if (next.allowedViewerKeys.length === 0) return err('Define al menos un permiso para ver respuestas')
     if (next.fields.length === 0) return err('Debes agregar al menos un campo')
 
-    db.forms.set(id, next)
     await persistFormDefinition(next)
     logExtra('🛠️ Formulario actualizado', `${u.username} actualizó ${next.title}`)
     return NextResponse.json({ mensaje: '✅ Formulario actualizado', form: next })
@@ -206,7 +204,6 @@ export async function POST(req: NextRequest) {
     const current = db.forms.get(id)
     if (!current) return err('Formulario no encontrado', 404)
     const next = { ...current, active: !current.active, updatedAt: new Date().toISOString() }
-    db.forms.set(id, next)
     await persistFormDefinition(next)
     logExtra('🔀 Formulario alternado', `${u.username} cambió estado de ${next.title} a ${next.active ? 'activo' : 'inactivo'}`)
     return NextResponse.json({ mensaje: '✅ Estado actualizado', form: next })
@@ -215,10 +212,6 @@ export async function POST(req: NextRequest) {
   if (action === 'delete') {
     const id = String(body?.id || '').trim()
     if (!db.forms.has(id)) return err('Formulario no encontrado', 404)
-    db.forms.delete(id)
-    for (const [sid, sub] of db.submissions.entries()) {
-      if (sub.formId === id) db.submissions.delete(sid)
-    }
     await deleteFormSubmissionsByFormId(id)
     await deleteFormDefinition(id)
     logExtra('🗑️ Formulario eliminado', `${u.username} eliminó formulario ${id}`)
@@ -227,14 +220,12 @@ export async function POST(req: NextRequest) {
 
   if (action === 'reset_all') {
     if (u.rol !== 'command_staff') return forbidden()
-    db.forms.clear()
-    db.submissions.clear()
-    db.config.set('global', {
+    const nextConfig = {
       ...defaultConfig(),
       updatedBy: u.username,
       updatedAt: new Date().toISOString(),
-    })
-    await persistFormsConfig(db.config.get('global')!)
+    }
+    await resetFormsStore(nextConfig)
     logExtra('♻️ Reset formularios', `${u.username} reinició formularios y respuestas`)
     return NextResponse.json({ mensaje: '✅ Formularios reiniciados' })
   }

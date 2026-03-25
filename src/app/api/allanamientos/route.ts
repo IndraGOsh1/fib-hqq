@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { v4 as uuid } from 'uuid'
-import { getUser, unauthorized, err } from '@/lib/auth'
-import { getAllanamientosDB, nextAllNumber, type Allanamiento } from '@/lib/allanamientos-db'
+import { getUser, unauthorized, err, isUserFrozen, frozen } from '@/lib/auth'
+import { getAllanamientosDB, nextAllNumber, persistAllanamiento, type Allanamiento } from '@/lib/allanamientos-db'
 import { getDB } from '@/lib/db'
 import { logAllanamiento } from '@/lib/webhook'
 
@@ -19,6 +19,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const u = getUser(req); if (!u) return unauthorized()
+  if (await isUserFrozen(u.id)) return frozen()
   const { direccion, motivacion, descripcion, sospechoso, casoVinculado, unidad } = await req.json().catch(()=>({}))
   if (!direccion?.trim() || !motivacion?.trim()) return err('direccion y motivacion son requeridos')
   const [allDB, userDB] = await Promise.all([getAllanamientosDB(), getDB()])
@@ -45,7 +46,11 @@ export async function POST(req: NextRequest) {
     }],
     actualizadoEn:now,
   }
-  allDB.set(all.id, all)
+  try {
+    await persistAllanamiento(all)
+  } catch {
+    return err('No se pudo persistir la solicitud de allanamiento. Reintenta.', 503)
+  }
   logAllanamiento('Creada', all.numeroSolicitud, u.username, direccion)
   return NextResponse.json({ mensaje:'✅ Solicitud enviada', id:all.id, numero:all.numeroSolicitud }, { status:201 })
 }

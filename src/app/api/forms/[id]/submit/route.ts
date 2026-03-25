@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getUser, unauthorized, err } from '@/lib/auth'
+import { getUser, unauthorized, err, isUserFrozen, frozen } from '@/lib/auth'
 import { buildSubmissionId, defaultConfig, getFormsDB, persistFormSubmission } from '@/lib/forms-db'
 import { getRequestIp, rateLimit } from '@/lib/security'
 import { logWebhook } from '@/lib/webhook'
@@ -8,6 +8,7 @@ type P = { params: Promise<{ id: string }> }
 
 export async function POST(req: NextRequest, { params }: P) {
   const u = getUser(req); if (!u) return unauthorized()
+  if (await isUserFrozen(u.id)) return frozen()
 
   const ip = getRequestIp(req)
   const limit = rateLimit({ key: `forms:submit:${u.username}:${ip}`, max: 8, windowMs: 60_000 })
@@ -103,7 +104,6 @@ export async function POST(req: NextRequest, { params }: P) {
     userAgent: req.headers.get('user-agent') || 'unknown',
   }
 
-  db.submissions.set(submission.id, submission)
   await persistFormSubmission(submission)
   await logWebhook({
     type: 'extras',

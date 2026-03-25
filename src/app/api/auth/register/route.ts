@@ -45,21 +45,20 @@ export async function POST(req: NextRequest) {
     vetoBy:null,
     clases: [],
   }
-  db.users.set(id, user)
-  await getCarpeta(user.username)
-  inv.usos++; inv.usadoPor.push(normalizedUsername)
-  db.invites.set(inv.codigo, inv)
+  const nextInvite = {
+    ...inv,
+    usos: inv.usos + 1,
+    usadoPor: [...inv.usadoPor, normalizedUsername],
+  }
   try {
-    await persistUserAndInvite(user, inv)
+    await persistUserAndInvite(user, nextInvite)
+    db.users.set(id, user)
+    db.invites.set(nextInvite.codigo, nextInvite)
+    await getCarpeta(user.username)
   } catch {
-    // Keep in-memory and persisted state aligned if a durable write fails.
-    db.users.delete(id)
-    inv.usos = Math.max(0, inv.usos - 1)
-    inv.usadoPor = inv.usadoPor.filter((x: string) => x !== normalizedUsername)
-    db.invites.set(inv.codigo, inv)
     return err('No se pudo completar el registro en este momento. Reintenta.', 503)
   }
-  logRegister(user.username, user.rol, inv.codigo)
+  logRegister(user.username, user.rol, nextInvite.codigo)
   const token = signToken({ id, username:user.username, rol:user.rol, nombre:user.nombre, agentNumber:user.agentNumber, callsign:null, clases: [] })
   return NextResponse.json({ token, usuario:{ id, username:user.username, rol:user.rol, nombre:user.nombre, agentNumber:user.agentNumber, callsign:null, clases: [] } }, { status:201 })
 }

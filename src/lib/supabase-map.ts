@@ -30,11 +30,13 @@ export class SupabaseMap<K extends string, V extends Record<string, any>> {
   private table: string
   private pkField: K
   private cache: Map<string, V>
+  private writeQueue: Promise<void>
 
   private constructor(table: string, pkField: K, initial: Map<string, V>) {
     this.table   = table
     this.pkField = pkField
     this.cache   = initial
+    this.writeQueue = Promise.resolve()
   }
 
   static async create<K extends string, V extends Record<string, any>>(
@@ -83,12 +85,79 @@ export class SupabaseMap<K extends string, V extends Record<string, any>> {
   [Symbol.iterator]()         { return this.cache[Symbol.iterator]() }
   get [Symbol.toStringTag]()  { return 'SupabaseMap' }
 
+  private enqueueWrite(task: () => Promise<void>) {
+    const run = this.writeQueue.then(task, task)
+    this.writeQueue = run.then(() => undefined, () => undefined)
+    return run
+  }
+
+  private async upsertRemote(value: V) {
+    const client = getClient()
+    if (!client) return
+    const { error } = await (client.from(this.table) as any).upsert(value as any)
+    if (error) throw new Error(`[SupabaseMap] upsert error on ${this.table}: ${error.message}`)
+  }
+
+  private async deleteRemote(key: string) {
+    const client = getClient()
+    if (!client) return
+    const { error } = await (client.from(this.table) as any).delete().eq(this.pkField, key)
+    if (error) throw new Error(`[SupabaseMap] delete error on ${this.table}: ${error.message}`)
+  }
+
+  private async clearRemote() {
+    const client = getClient()
+    if (!client) return
+    const { error } = await (client.from(this.table) as any).delete().neq(this.pkField, '')
+    if (error) throw new Error(`[SupabaseMap] clear error on ${this.table}: ${error.message}`)
+  }
+
+  async setPersistent(key: string, value: V): Promise<this> {
+    const hadPrevious = this.cache.has(key)
+    const previous = this.cache.get(key)
+    this.cache.set(key, value)
+    try {
+      await this.enqueueWrite(() => this.upsertRemote(value))
+    } catch (error) {
+      if (hadPrevious && previous) this.cache.set(key, previous)
+      else this.cache.delete(key)
+      throw error
+    }
+    return this
+  }
+
+  async deletePersistent(key: string): Promise<boolean> {
+    const previous = this.cache.get(key)
+    const existed = this.cache.delete(key)
+    if (!existed) return false
+    try {
+      await this.enqueueWrite(() => this.deleteRemote(key))
+    } catch (error) {
+      if (previous) this.cache.set(key, previous)
+      throw error
+    }
+    return true
+  }
+
+  async clearPersistent(): Promise<void> {
+    const snapshot = new Map(this.cache)
+    this.cache.clear()
+    try {
+      await this.enqueueWrite(() => this.clearRemote())
+    } catch (error) {
+      this.cache = snapshot
+      throw error
+    }
+  }
+
+  async whenIdle(): Promise<void> {
+    await this.writeQueue
+  }
+
   set(key: string, value: V): this {
     this.cache.set(key, value)
-    const client = getClient()
-    if (!client) return this
-    ;(client.from(this.table) as any).upsert(value as any).then(({ error }: any) => {
-      if (error) console.error(`[SupabaseMap] upsert error on ${this.table}:`, error.message)
+    void this.enqueueWrite(() => this.upsertRemote(value)).catch((error) => {
+      console.error(error instanceof Error ? error.message : `[SupabaseMap] upsert error on ${this.table}`)
     })
     return this
   }
@@ -96,10 +165,8 @@ export class SupabaseMap<K extends string, V extends Record<string, any>> {
   delete(key: string): boolean {
     const existed = this.cache.delete(key)
     if (existed) {
-      const client = getClient()
-      if (!client) return existed
-      ;(client.from(this.table) as any).delete().eq(this.pkField, key).then(({ error }: any) => {
-        if (error) console.error(`[SupabaseMap] delete error on ${this.table}:`, error.message)
+      void this.enqueueWrite(() => this.deleteRemote(key)).catch((error) => {
+        console.error(error instanceof Error ? error.message : `[SupabaseMap] delete error on ${this.table}`)
       })
     }
     return existed
@@ -107,10 +174,32 @@ export class SupabaseMap<K extends string, V extends Record<string, any>> {
 
   clear(): void {
     this.cache.clear()
-    const client = getClient()
-    if (!client) return
-    ;(client.from(this.table) as any).delete().neq(this.pkField, '').then(({ error }: any) => {
-      if (error) console.error(`[SupabaseMap] clear error on ${this.table}:`, error.message)
+    void this.enqueueWrite(() => this.clearRemote()).catch((error) => {
+      console.error(error instanceof Error ? error.message : `[SupabaseMap] clear error on ${this.table}`)
     })
   }
+}
+
+export async function persistentMapSet<V extends Record<string, any>>(map: Map<string, V>, key: string, value: V) {
+  if (map instanceof SupabaseMap) {
+    await map.setPersistent(key, value)
+    return map
+  }
+  map.set(key, value)
+  return map
+}
+
+export async function persistentMapDelete<V extends Record<string, any>>(map: Map<string, V>, key: string) {
+  if (map instanceof SupabaseMap) {
+    return map.deletePersistent(key)
+  }
+  return map.delete(key)
+}
+
+export async function persistentMapClear<V extends Record<string, any>>(map: Map<string, V>) {
+  if (map instanceof SupabaseMap) {
+    await map.clearPersistent()
+    return
+  }
+  map.clear()
 }

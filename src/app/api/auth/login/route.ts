@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
     callsign: found.callsign,
     clases: Array.isArray(found.clases) ? found.clases : [],
   })
-  return NextResponse.json({
+  const res = NextResponse.json({
     token,
     usuario: {
       id: found.id,
@@ -44,4 +44,13 @@ export async function POST(req: NextRequest) {
       clases: Array.isArray(found.clases) ? found.clases : [],
     },
   })
+  // Emit httpOnly session cookie so Edge middleware can gate /dashboard/* server-side
+  res.cookies.set('fib_session', token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    maxAge: 60 * 60 * 24 * 7, // 7 days — mirrors JWT expiry
+    path: '/',
+  })
+  return res
 }

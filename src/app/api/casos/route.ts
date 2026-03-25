@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { v4 as uuid } from 'uuid'
-import { getUser, unauthorized, err } from '@/lib/auth'
-import { getCasosDB, nextCaseNumber, type Caso } from '@/lib/casos-db'
+import { getUser, unauthorized, err, isUserFrozen, frozen } from '@/lib/auth'
+import { getCasosDB, nextCaseNumber, persistCaso, type Caso } from '@/lib/casos-db'
 
 export async function GET(req: NextRequest) {
   const u = getUser(req); if (!u) return unauthorized()
@@ -21,6 +21,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const u = getUser(req); if (!u) return unauthorized()
+  if (await isUserFrozen(u.id)) return frozen()
   const { titulo, descripcion, tipo, prioridad, unidad, clasificacion, agentesAsignados } = await req.json().catch(()=>({}))
   if (!titulo?.trim() || !tipo) return err('titulo y tipo son requeridos')
 
@@ -39,6 +40,10 @@ export async function POST(req: NextRequest) {
     clasificacion: clasificacion||'interno',
     creadoPor:u.username, creadoEn:now, actualizadoEn:now,
   }
-  CasosDB.set(caso.id, caso)
+  try {
+    await persistCaso(caso)
+  } catch {
+    return err('No se pudo persistir el caso. Reintenta.', 503)
+  }
   return NextResponse.json({ mensaje:'✅ Caso creado', id:caso.id, numeroCaso:caso.numeroCaso }, { status:201 })
 }

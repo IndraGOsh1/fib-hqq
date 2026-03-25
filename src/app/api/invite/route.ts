@@ -46,13 +46,12 @@ export async function POST(req: NextRequest) {
     nombre:nombre||null, creadoPor:u.username,
     creadoEn:new Date().toISOString(), maxUsos:usos, usos:0, usadoPor:[],
   }
-  db.invites.set(codigo, invite)
   try {
     await persistInvite(invite)
   } catch {
-    db.invites.delete(codigo)
     return err('No se pudo persistir el codigo en base de datos. Reintenta.', 503)
   }
+  db.invites.set(codigo, invite)
   logInviteCodes('Creada', codigo, rol, u.username)
   return NextResponse.json({ mensaje:'✅ Código creado', codigo, rol, maxUsos:usos }, { status:201 })
 }
@@ -66,12 +65,11 @@ export async function DELETE(req: NextRequest) {
   if (!code || !db.invites.has(code)) return err('Código no encontrado', 404)
   const previous = db.invites.get(code)
   logInviteCodes('Eliminada', code, db.invites.get(code)!.rol, u.username)
-  db.invites.delete(code)
   try {
     await deleteInviteByCode(code)
   } catch {
-    if (previous) db.invites.set(code, previous)
     return err('No se pudo eliminar el codigo en base de datos. Reintenta.', 503)
   }
+  db.invites.delete(code)
   return NextResponse.json({ mensaje:'✅ Código eliminado' })
 }

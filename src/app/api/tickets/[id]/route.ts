@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { v4 as uuid } from 'uuid'
-import { getUser, unauthorized, forbidden, notFound } from '@/lib/auth'
-import { getTicketsDB } from '@/lib/tickets-db'
+import { getUser, unauthorized, forbidden, notFound, isUserFrozen, frozen } from '@/lib/auth'
+import { deleteTicketById, getTicketsDB, persistTicket } from '@/lib/tickets-db'
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const u = getUser(req); if (!u) return unauthorized()
@@ -14,6 +14,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const u = getUser(req); if (!u) return unauthorized()
+  if (await isUserFrozen(u.id)) return frozen()
   const { id } = await params
   const TicketsDB = await getTicketsDB()
   const t = TicketsDB.get(id); if (!t) return notFound()
@@ -21,30 +22,40 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const body = await req.json().catch(()=>({}))
   const now  = new Date().toISOString()
   const isSuperv = ['command_staff','supervisory'].includes(u.rol)
+  const next = JSON.parse(JSON.stringify(t)) as typeof t
   if (body.estado !== undefined && isSuperv) {
-    t.estado = body.estado
-    if (body.estado === 'resuelto') { t.resueltoPor = u.username; t.resueltoEn = now }
+    next.estado = body.estado
+    if (body.estado === 'resuelto') { next.resueltoPor = u.username; next.resueltoEn = now }
   }
-  if (body.asignadoA !== undefined && isSuperv) t.asignadoA = body.asignadoA
-  if (body.prioridad !== undefined && isSuperv) t.prioridad = body.prioridad
+  if (body.asignadoA !== undefined && isSuperv) next.asignadoA = body.asignadoA
+  if (body.prioridad !== undefined && isSuperv) next.prioridad = body.prioridad
   if (body.comentario) {
     const comentario = String(body.comentario).trim()
     if (comentario.length > 2000) {
       return NextResponse.json({ error: 'Comentario demasiado largo (máximo 2000)' }, { status: 400 })
     }
-    t.comentarios.push({ id:uuid().slice(0,8), autor:u.username, contenido:comentario, fecha:now, interno:body.interno||false })
+    next.comentarios.push({ id:uuid().slice(0,8), autor:u.username, contenido:comentario, fecha:now, interno:body.interno||false })
   }
-  t.actualizadoEn = now
-  TicketsDB.set(id, t)
+  next.actualizadoEn = now
+  try {
+    await persistTicket(next)
+  } catch {
+    return NextResponse.json({ error: 'No se pudo persistir el ticket. Reintenta.' }, { status: 503 })
+  }
   return NextResponse.json({ mensaje:'✅ Ticket actualizado' })
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const u = getUser(req); if (!u) return unauthorized()
+  if (await isUserFrozen(u.id)) return frozen()
   if (u.rol !== 'command_staff') return forbidden()
   const { id } = await params
   const TicketsDB = await getTicketsDB()
   if (!TicketsDB.has(id)) return notFound()
-  TicketsDB.delete(id)
+  try {
+    await deleteTicketById(id)
+  } catch {
+    return NextResponse.json({ error: 'No se pudo eliminar el ticket. Reintenta.' }, { status: 503 })
+  }
   return NextResponse.json({ mensaje:'✅ Eliminado' })
 }

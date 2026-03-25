@@ -45,7 +45,8 @@ export interface Operativo {
   tags:        string[]
 }
 
-import { SupabaseMap } from './supabase-map'
+import { SupabaseMap, persistentMapDelete, persistentMapSet } from './supabase-map'
+import { getSecret } from './secrets'
 
 declare global {
   // eslint-disable-next-line no-var
@@ -57,7 +58,7 @@ if (!global.__fibOps) {
   global.__fibOps = new Map()
 }
 
-const isSupabaseEnabled = !!process.env.NEXT_PUBLIC_SUPABASE_URL || !!process.env.SUPABASE_URL
+const isSupabaseEnabled = !!(getSecret('SUPABASE_URL') || process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL)
 
 const initialOps: Operativo[] = [
   {
@@ -107,6 +108,16 @@ if (!global.__fibOpsDB) {
 
 export async function getOpsDB() {
   return global.__fibOpsDB!
+}
+
+export async function persistOperativo(operativo: Operativo) {
+  const db = await getOpsDB()
+  await persistentMapSet(db, operativo.id, operativo)
+}
+
+export async function deleteOperativoById(id: string) {
+  const db = await getOpsDB()
+  await persistentMapDelete(db, id)
 }
 
 let _opsDB: Map<string, Operativo> | null = null

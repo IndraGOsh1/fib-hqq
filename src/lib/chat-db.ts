@@ -191,16 +191,22 @@ export async function getMessages(canalId: string, limit = 100): Promise<Mensaje
 
 export async function appendMessage(canalId: string, msg: Mensaje) {
   const chat = await getChatDB()
-  if (!chat.mensajes.has(canalId)) chat.mensajes.set(canalId, [])
+  if (!isSupabaseEnabled) {
+    if (!chat.mensajes.has(canalId)) chat.mensajes.set(canalId, [])
+    const current = [...(chat.mensajes.get(canalId) || []), msg]
+    if (current.length > 500) current.splice(0, current.length - 500)
+    chat.mensajes.set(canalId, current)
+    return
+  }
 
-  const current = chat.mensajes.get(canalId) || []
-  current.push(msg)
-  if (current.length > 500) current.splice(0, current.length - 500)
-  chat.mensajes.set(canalId, current)
-
-  if (!isSupabaseEnabled) return
   const supabase = getSupabase()
-  if (!supabase) return
+  if (!supabase) {
+    if (!chat.mensajes.has(canalId)) chat.mensajes.set(canalId, [])
+    const current = [...(chat.mensajes.get(canalId) || []), msg]
+    if (current.length > 500) current.splice(0, current.length - 500)
+    chat.mensajes.set(canalId, current)
+    return
+  }
 
   const row: ChatMessageRow = {
     id: msg.id,
@@ -214,20 +220,32 @@ export async function appendMessage(canalId: string, msg: Mensaje) {
     leido: msg.leido,
   }
   const { error } = await supabase.from('chat_messages').insert(row as any)
-  if (error) console.error('[ChatDB] Error inserting message:', error.message)
+  if (error) throw new Error(`[chat] No se pudo persistir mensaje: ${error.message}`)
+
+  const current = [...(chat.mensajes.get(canalId) || []), msg]
+  if (current.length > 500) current.splice(0, current.length - 500)
+  chat.mensajes.set(canalId, current)
 }
 
 export async function markRead(canalId: string, username: string) {
   const chat = await getChatDB()
   const now = new Date().toISOString()
 
-  ;(chat.mensajes.get(canalId) || []).forEach(m => {
-    if (!m.leido.includes(username)) m.leido.push(username)
-  })
-
-  if (!isSupabaseEnabled) return
+  if (!isSupabaseEnabled) {
+    chat.mensajes.set(canalId, (chat.mensajes.get(canalId) || []).map((m) => ({
+      ...m,
+      leido: m.leido.includes(username) ? m.leido : [...m.leido, username],
+    })))
+    return
+  }
   const supabase = getSupabase()
-  if (!supabase) return
+  if (!supabase) {
+    chat.mensajes.set(canalId, (chat.mensajes.get(canalId) || []).map((m) => ({
+      ...m,
+      leido: m.leido.includes(username) ? m.leido : [...m.leido, username],
+    })))
+    return
+  }
 
   const readRow: ChatRead = {
     canal: canalId,
@@ -235,7 +253,12 @@ export async function markRead(canalId: string, username: string) {
     last_read_at: now,
   }
   const { error } = await supabase.from('chat_reads').upsert(readRow as any)
-  if (error) console.error('[ChatDB] Error updating read status:', error.message)
+  if (error) throw new Error(`[chat] No se pudo persistir lectura: ${error.message}`)
+
+  chat.mensajes.set(canalId, (chat.mensajes.get(canalId) || []).map((m) => ({
+    ...m,
+    leido: m.leido.includes(username) ? m.leido : [...m.leido, username],
+  })))
 }
 
 export async function getLastMessage(canalId: string): Promise<Mensaje | null> {
@@ -305,9 +328,9 @@ export async function getOrCreateDM(u1: string, u2: string): Promise<Canal> {
   const id = 'dm-' + [u1,u2].sort().join('__')
   if (!ChatDB.canales.has(id)) {
     const c: Canal = { id, nombre:id, descripcion:'DM', tipo:'dm', acceso:[u1,u2], participantes:[u1,u2], creadoEn:new Date().toISOString(), creadoPor:u1 }
+    await persistCanal(c)
     ChatDB.canales.set(id, c)
     ChatDB.mensajes.set(id, [])
-    await persistCanal(c)
   }
   return ChatDB.canales.get(id)!
 }
@@ -340,9 +363,9 @@ export async function createPrivateChannel(input: {
     tipo: 'sistema',
     leido: [],
   }
+  await persistCanal(canal)
   ChatDB.canales.set(canal.id, canal)
   ChatDB.mensajes.set(canal.id, [])
-  await persistCanal(canal)
   await appendMessage(canal.id, systemMessage)
   return canal
 }

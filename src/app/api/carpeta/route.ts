@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { v4 as uuid } from 'uuid'
-import { getUser, unauthorized, forbidden } from '@/lib/auth'
+import { getUser, unauthorized, forbidden, isUserFrozen, frozen } from '@/lib/auth'
 import { canAccessCarpetaHilo, getCarpeta, persistCarpeta, type HiloCarpeta } from '@/lib/carpeta-db'
 import { getDB } from '@/lib/db'
 
@@ -40,6 +40,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const u = getUser(req)
   if (!u) return unauthorized()
+  if (await isUserFrozen(u.id)) return frozen()
   const body = await req.json().catch(()=>({}))
   const now  = new Date().toISOString()
   const { searchParams } = new URL(req.url)
@@ -177,6 +178,7 @@ export async function POST(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   const u = getUser(req)
   if (!u) return unauthorized()
+  if (await isUserFrozen(u.id)) return frozen()
   const { tipo, id } = await req.json().catch(()=>({}))
   const { searchParams } = new URL(req.url)
   const targetUsername = String(searchParams.get('username') || u.username)

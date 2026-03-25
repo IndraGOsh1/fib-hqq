@@ -13,23 +13,32 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const db = await getDB()
   const usr = db.users.get(id); if (!usr) return notFound('Usuario no encontrado')
   if (u.rol === 'supervisory' && usr.rol === 'command_staff') return forbidden()
-  const { rol, activo, discordId, agentNumber, nombre, callsign, vetado, vetoReason, clases } = await req.json().catch(()=>({}))
+  const { rol, activo, discordId, agentNumber, nombre, callsign, vetado, vetoReason, congelado, congeladoReason, clases } = await req.json().catch(()=>({}))
+  const nextUser = { ...usr }
 
   if (u.rol === 'command_staff') {
     if (rol !== undefined) {
       if (!ROLES.includes(rol)) return NextResponse.json({ error: 'Rol inválido' }, { status: 400 })
-      usr.rol = rol
+      nextUser.rol = rol
     }
-    if (typeof activo === 'boolean') usr.activo = activo
-    if (discordId !== undefined) usr.discordId = discordId
-    if (agentNumber !== undefined) usr.agentNumber = agentNumber
-    if (nombre !== undefined) usr.nombre = nombre
+    if (typeof activo === 'boolean') nextUser.activo = activo
+    if (discordId !== undefined) nextUser.discordId = discordId
+    if (agentNumber !== undefined) nextUser.agentNumber = agentNumber
+    if (nombre !== undefined) nextUser.nombre = nombre
     if (clases !== undefined) {
       if (!Array.isArray(clases)) return NextResponse.json({ error: 'Clases inválidas' }, { status: 400 })
-      usr.clases = clases
+      nextUser.clases = clases
         .map((x: any) => String(x || '').trim())
         .filter((x: string) => VALID_CLASSES.includes(x))
         .slice(0, 6)
+    }
+    // Freeze / unfreeze: read-only mode, user can view but cannot mutate
+    if (typeof congelado === 'boolean') {
+      nextUser.congelado = congelado
+      nextUser.congeladoReason = congelado ? (String(congeladoReason || '').trim() || 'Sin motivo especificado') : null
+      nextUser.congeladoAt = congelado ? new Date().toISOString() : null
+      nextUser.congeladoPor = congelado ? u.username : null
+      logRegistroImportante('Freeze', nextUser.username, u.username, congelado ? `Congelado. Motivo: ${nextUser.congeladoReason}` : 'Congelación retirada')
     }
   }
 
@@ -40,24 +49,24 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   if (u.rol === 'command_staff' && typeof vetado === 'boolean') {
-    usr.vetado = vetado
-    usr.vetoReason = vetado ? (String(vetoReason || '').trim() || 'Sin motivo especificado') : null
-    usr.vetoAt = vetado ? new Date().toISOString() : null
-    usr.vetoBy = vetado ? u.username : null
-    logRegistroImportante('Veto', usr.username, u.username, vetado ? `Vetado. Motivo: ${usr.vetoReason}` : 'Veto retirado')
+    nextUser.vetado = vetado
+    nextUser.vetoReason = vetado ? (String(vetoReason || '').trim() || 'Sin motivo especificado') : null
+    nextUser.vetoAt = vetado ? new Date().toISOString() : null
+    nextUser.vetoBy = vetado ? u.username : null
+    logRegistroImportante('Veto', nextUser.username, u.username, vetado ? `Vetado. Motivo: ${nextUser.vetoReason}` : 'Veto retirado')
   }
 
   if (callsign   !== undefined) {
-    usr.callsign = callsign
-    logKeyAction('Callsign asignado', u.username, `${usr.username} → ${callsign}`)
+    nextUser.callsign = callsign
+    logKeyAction('Callsign asignado', u.username, `${nextUser.username} → ${callsign}`)
   }
-  db.users.set(id, usr)
   try {
-    await persistUser(usr)
+    await persistUser(nextUser)
   } catch {
     return NextResponse.json({ error: 'No se pudo persistir el usuario en base de datos. Reintenta.' }, { status: 503 })
   }
-  const { passwordHash:_, ...safe } = usr
+  db.users.set(id, nextUser)
+  const { passwordHash:_, ...safe } = nextUser
   return NextResponse.json({ mensaje:'✅ Usuario actualizado', usuario:safe })
 }
 
@@ -73,13 +82,11 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     return NextResponse.json({ error: 'No puedes eliminar tu propia cuenta' }, { status: 400 })
   }
 
-  const backup = db.users.get(id)
-  db.users.delete(id)
   try {
     await deleteUserById(id)
   } catch {
-    if (backup) db.users.set(id, backup)
     return NextResponse.json({ error: 'No se pudo eliminar el usuario en base de datos. Reintenta.' }, { status: 503 })
   }
+  db.users.delete(id)
   return NextResponse.json({ mensaje: '✅ Usuario eliminado' })
 }

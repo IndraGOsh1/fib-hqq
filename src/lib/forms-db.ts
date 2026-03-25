@@ -1,5 +1,5 @@
 import { v4 as uuid } from 'uuid'
-import { SupabaseMap } from './supabase-map'
+import { SupabaseMap, persistentMapClear, persistentMapDelete, persistentMapSet } from './supabase-map'
 import { createClient } from '@supabase/supabase-js'
 import { getSecret } from './secrets'
 
@@ -96,7 +96,7 @@ declare global {
   var __fibFormsInit: Promise<FormsStore> | undefined
 }
 
-const isSupabaseEnabled = !!(process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL)
+const isSupabaseEnabled = !!(getSecret('SUPABASE_URL') || process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL)
 
 let _formsClient: ReturnType<typeof createClient> | null = null
 
@@ -145,43 +145,41 @@ export async function getFormsDB(): Promise<FormsStore> {
 }
 
 export async function persistFormDefinition(form: FormDefinition) {
-  if (!isSupabaseEnabled) return
-  const client = getFormsClient()
-  if (!client) return
-  const { error } = await (client.from('forms') as any).upsert(form as any)
-  if (error) throw new Error(`[forms] No se pudo persistir formulario: ${error.message}`)
+  const db = await getFormsDB()
+  await persistentMapSet(db.forms, form.id, form)
 }
 
 export async function deleteFormDefinition(id: string) {
-  if (!isSupabaseEnabled) return
-  const client = getFormsClient()
-  if (!client) return
-  const { error } = await (client.from('forms') as any).delete().eq('id', id)
-  if (error) throw new Error(`[forms] No se pudo eliminar formulario: ${error.message}`)
+  const db = await getFormsDB()
+  await persistentMapDelete(db.forms, id)
 }
 
 export async function persistFormsConfig(config: FormsConfig) {
-  if (!isSupabaseEnabled) return
-  const client = getFormsClient()
-  if (!client) return
-  const { error } = await (client.from('forms_config') as any).upsert(config as any)
-  if (error) throw new Error(`[forms] No se pudo persistir configuración: ${error.message}`)
+  const db = await getFormsDB()
+  await persistentMapSet(db.config, config.id, config)
 }
 
 export async function persistFormSubmission(submission: FormSubmission) {
-  if (!isSupabaseEnabled) return
-  const client = getFormsClient()
-  if (!client) return
-  const { error } = await (client.from('form_submissions') as any).upsert(submission as any)
-  if (error) throw new Error(`[forms] No se pudo persistir respuesta: ${error.message}`)
+  const db = await getFormsDB()
+  await persistentMapSet(db.submissions, submission.id, submission)
 }
 
 export async function deleteFormSubmissionsByFormId(formId: string) {
-  if (!isSupabaseEnabled) return
-  const client = getFormsClient()
-  if (!client) return
-  const { error } = await (client.from('form_submissions') as any).delete().eq('formId', formId)
-  if (error) throw new Error(`[forms] No se pudieron eliminar respuestas: ${error.message}`)
+  const db = await getFormsDB()
+  const ids = Array.from(db.submissions.entries())
+    .filter(([, submission]) => submission.formId === formId)
+    .map(([submissionId]) => submissionId)
+
+  for (const submissionId of ids) {
+    await persistentMapDelete(db.submissions, submissionId)
+  }
+}
+
+export async function resetFormsStore(config: FormsConfig) {
+  const db = await getFormsDB()
+  await persistentMapClear(db.forms)
+  await persistentMapClear(db.submissions)
+  await persistentMapSet(db.config, config.id, config)
 }
 
 export function buildFormId() {
