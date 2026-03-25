@@ -166,6 +166,18 @@ function buildAllanamientoStatusImage(numero: string, direccion: string, estado:
   return `https://dummyimage.com/1200x628/0a1320/e6ecf2.png&text=${title}%0A${subtitle}`
 }
 
+function isDiscordRenderableImage(url?: string) {
+  if (!url) return false
+  const normalized = String(url).trim()
+  if (!/^https?:\/\//i.test(normalized)) return false
+  if (/localhost|127\.0\.0\.1|\.local/i.test(normalized)) return false
+  return /\.(png|jpg|jpeg|webp|gif)(\?|$)/i.test(normalized)
+}
+
+function resolveDiscordImage(previewUrl: string | undefined, fallbackUrl: string) {
+  return isDiscordRenderableImage(previewUrl) ? String(previewUrl).trim() : fallbackUrl
+}
+
 export async function logAllanamientoAutorizadoCard(input: {
   numero: string
   direccion: string
@@ -175,7 +187,10 @@ export async function logAllanamientoAutorizadoCard(input: {
   previewUrl?: string
 }) {
   if (!ALLANAMIENTO_WEBHOOK) return
-  const imageUrl = input.previewUrl || buildAllanamientoStatusImage(input.numero, input.direccion, 'autorizado')
+  const imageUrl = resolveDiscordImage(
+    input.previewUrl,
+    buildAllanamientoStatusImage(input.numero, input.direccion, 'autorizado')
+  )
   const embed = {
     title: '✅ Allanamiento Aprobado',
     color: COLORS.green,
@@ -205,9 +220,13 @@ export async function logAllanamientoDocumentoGenerado(input: {
   numero: string
   direccion: string
   generadoPor: string
-  previewUrl: string
+  previewUrl?: string
 }) {
   if (!ALLANAMIENTO_WEBHOOK) return
+  const imageUrl = resolveDiscordImage(
+    input.previewUrl,
+    buildAllanamientoStatusImage(input.numero, input.direccion, 'documento generado')
+  )
   const embed = {
     title: '📄 PDF de Allanamiento Generado',
     color: COLORS.blue,
@@ -216,7 +235,7 @@ export async function logAllanamientoDocumentoGenerado(input: {
       { name: 'Generado por', value: input.generadoPor, inline: true },
       { name: 'Dirección', value: input.direccion.slice(0, 1024), inline: false },
     ],
-    image: { url: input.previewUrl },
+    image: { url: imageUrl },
     timestamp: new Date().toISOString(),
     footer: { text: 'FIB HQ — Documento operativo' },
   }

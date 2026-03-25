@@ -2,6 +2,8 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { Plus, RefreshCw, X, ChevronRight, AlertCircle, CheckCircle, FileText, Clock, Shield, Send, MessageCircle } from 'lucide-react'
 import { getCasos, getCaso, crearCaso, editarCaso, borrarCaso } from '@/lib/client'
+import { Toast, ToastType } from '@/components/Toast'
+import { TableSkeleton } from '@/components/Skeleton'
 
 const ESTADO_TAG: Record<string,string> = {
   abierto:     'tag border-green-700 bg-green-900/20 text-green-400',
@@ -16,15 +18,6 @@ const PRIORIDAD_TAG: Record<string,string> = {
   critica: 'tag border-red-700 bg-red-900/20 text-red-400',
 }
 
-function Toast({ msg, ok, onClose }: { msg:string; ok:boolean; onClose:()=>void }) {
-  useEffect(() => { const t = setTimeout(onClose, 3500); return () => clearTimeout(t) }, [])
-  return (
-    <div className={`fixed bottom-5 right-5 z-[100] flex items-center gap-2 px-4 py-3 border font-mono text-xs ${ok?'bg-green-900/40 border-green-700 text-green-300':'bg-red-900/40 border-red-700 text-red-300'}`}>
-      {ok?<CheckCircle size={13}/>:<AlertCircle size={13}/>}{msg}
-    </div>
-  )
-}
-
 // ── Create caso modal — full form ─────────────────────────────────────────
 function ModalCrear({ onClose, onSuccess }: { onClose:()=>void; onSuccess:(m:string)=>void }) {
   const [form, setForm] = useState({ titulo:'', descripcion:'', tipo:'Investigación General', prioridad:'media', unidad:'General', clasificacion:'interno' })
@@ -32,9 +25,15 @@ function ModalCrear({ onClose, onSuccess }: { onClose:()=>void; onSuccess:(m:str
   const [error, setError] = useState('')
   const set = (k:keyof typeof form) => (e:React.ChangeEvent<HTMLInputElement|HTMLSelectElement|HTMLTextAreaElement>) => setForm(p=>({...p,[k]:e.target.value}))
   const TIPOS = ['Investigación General','Crimen Organizado','Homicidio','Tráfico','Cibercrimen','Terrorismo','Fraude','Otro']
+  
+  // Validation: check required fields
+  const isValid = form.titulo.trim().length > 0
 
   async function submit(e:React.FormEvent) {
-    e.preventDefault(); setError(''); setLoading(true)
+    e.preventDefault()
+    if (!isValid) return
+    setError('')
+    setLoading(true)
     try { await crearCaso(form); onSuccess('Caso creado'); onClose() }
     catch(err:any) { setError(err.message) }
     finally { setLoading(false) }
@@ -48,7 +47,7 @@ function ModalCrear({ onClose, onSuccess }: { onClose:()=>void; onSuccess:(m:str
           <button onClick={onClose} className="text-tx-muted hover:text-tx-primary"><X size={15}/></button>
         </div>
         <form onSubmit={submit} className="p-5 flex flex-col gap-3.5">
-          <div><label className="label">Título del caso *</label><input className="input" value={form.titulo} onChange={set('titulo')} required placeholder="Ej: Operación Tormenta — Tráfico zona norte"/></div>
+          <div><label className="label">Título del caso * <span className="text-red-400 text-[10px]">(requerido)</span></label><input className="input" value={form.titulo} onChange={set('titulo')} required placeholder="Ej: Operación Tormenta — Tráfico zona norte"/></div>
           <div><label className="label">Descripción inicial</label><textarea className="input min-h-20 resize-none text-xs" value={form.descripcion} onChange={set('descripcion')} placeholder="Contexto, antecedentes, información relevante..."/></div>
           <div className="grid grid-cols-2 gap-3">
             <div><label className="label">Tipo</label>
@@ -76,7 +75,7 @@ function ModalCrear({ onClose, onSuccess }: { onClose:()=>void; onSuccess:(m:str
           {error && <p className="font-mono text-xs text-red-400">{error}</p>}
           <div className="flex gap-2 pt-1">
             <button type="button" onClick={onClose} className="btn-ghost flex-1 justify-center">Cancelar</button>
-            <button type="submit" disabled={loading} className="btn-primary flex-1 justify-center">{loading?'Creando...':'Abrir Caso'}</button>
+            <button type="submit" disabled={!isValid || loading} className="btn-primary flex-1 justify-center disabled:opacity-50 disabled:cursor-not-allowed">{loading?'Creando...':'Abrir Caso'}</button>
           </div>
         </form>
       </div>
@@ -239,7 +238,7 @@ function CasoChat({ casoId, user, notas, canEdit, onAddNota }: {
 }
 
 // ── Case modal — tabbed with friendly chat ────────────────────────────────
-function ModalCaso({ casoId, user, onClose, onUpdate }: { casoId:string; user:any; onClose:()=>void; onUpdate:(m:string)=>void }) {
+function ModalCaso({ casoId, user, onClose, onUpdate, onError }: { casoId:string; user:any; onClose:()=>void; onUpdate:(m:string)=>void; onError:(m:string)=>void }) {
   const [caso, setCaso]   = useState<any>(null)
   const [tab,  setTab]    = useState<'chat'|'info'|'sospechosos'|'evidencia'|'timeline'>('chat')
   const [loading, setLoading] = useState(true)
@@ -255,7 +254,7 @@ function ModalCaso({ casoId, user, onClose, onUpdate }: { casoId:string; user:an
 
   async function action(body:any, msg:string) {
     try { await editarCaso(casoId, body); await loadCaso(); onUpdate(msg) }
-    catch(e:any) { alert(e.message) }
+    catch(e:any) { onError(e.message || 'Error al actualizar caso') }
   }
 
   if (loading) return <div className="modal-overlay"><div className="modal p-8 text-center font-mono text-xs text-tx-muted">Cargando caso...</div></div>
@@ -438,7 +437,7 @@ export default function CasosPage() {
   const [loading, setLoading] = useState(true)
   const [showCreate, setShowCreate] = useState(false)
   const [selectedId, setSelectedId] = useState<string|null>(null)
-  const [toast,   setToast]   = useState<{msg:string;ok:boolean}|null>(null)
+  const [toast,   setToast]   = useState<{msg:string;type:ToastType}|null>(null)
   const [filtroEstado, setFiltroEstado] = useState('')
 
   useEffect(() => { const u = localStorage.getItem('fib_user'); if (u) setUser(JSON.parse(u)) }, [])
@@ -455,13 +454,13 @@ export default function CasosPage() {
   }, [filtroEstado])
 
   useEffect(() => { load() }, [load])
-  const notify = (msg:string, ok=true) => { setToast({msg,ok}); load() }
+  const notify = (msg:string, type:ToastType='success') => { setToast({msg,type}); load() }
 
   return (
     <div className="max-w-6xl mx-auto">
-      {toast && <Toast msg={toast.msg} ok={toast.ok} onClose={()=>setToast(null)}/>}
+      {toast && <Toast msg={toast.msg} type={toast.type} onClose={()=>setToast(null)}/>}
       {showCreate && <ModalCrear onClose={()=>setShowCreate(false)} onSuccess={m=>notify(m)}/>}
-      {selectedId && <ModalCaso casoId={selectedId} user={user} onClose={()=>setSelectedId(null)} onUpdate={m=>notify(m)}/>}
+      {selectedId && <ModalCaso casoId={selectedId} user={user} onClose={()=>setSelectedId(null)} onUpdate={m=>notify(m)} onError={m=>notify(m,'error')}/>}
 
       <div className="flex items-center justify-between mb-5">
         <div className="page-header mb-0">
@@ -481,7 +480,7 @@ export default function CasosPage() {
         </select>
       </div>
 
-      {loading ? <div className="text-center py-16 font-mono text-xs text-tx-muted">Cargando...</div>
+      {loading ? <TableSkeleton rows={6} cols={9}/>
       : casos.length===0 ? (
         <div className="card p-14 flex flex-col items-center gap-3 text-tx-muted">
           <Shield size={28} className="opacity-20"/>

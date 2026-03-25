@@ -7,6 +7,11 @@ function formatThreadParticipants(participantes: string[] = []) {
   return participantes.join(', ')
 }
 
+function sectionLabel(raw: string) {
+  const value = String(raw || 'General').trim()
+  return value || 'General'
+}
+
 function Toast({ msg, ok, onClose }: { msg:string; ok:boolean; onClose:()=>void }) {
   useEffect(() => { const t = setTimeout(onClose, 3000); return () => clearTimeout(t) }, [])
   return (
@@ -358,6 +363,10 @@ export default function CarpetaPage() {
   const [expanded, setExpanded] = useState<string|null>(null)
   // For command/supervisory: viewing another agent's carpeta
   const [carpetaExterna, setCarpetaExterna] = useState<any>(null)
+  const [generalSections, setGeneralSections] = useState<any[]>([])
+  const [generalLoading, setGeneralLoading] = useState(false)
+  const [generalActive, setGeneralActive] = useState<any>(null)
+  const [generalReply, setGeneralReply] = useState('')
 
   const isSuperv = ['command_staff','supervisory'].includes(user?.rol)
   const activeThread = carpeta?.hilos?.find((hilo: any) => hilo.id === activeThreadId) || carpeta?.hilos?.[0]
@@ -406,6 +415,56 @@ export default function CarpetaPage() {
   async function recargarCarpeta() {
     const c = await getCarpeta()
     setCarpeta(c)
+  }
+
+  async function cargarGeneralPorSeccion(prefer?: { hiloId?: string; ownerUsername?: string }) {
+    if (!isSuperv) return
+    setGeneralLoading(true)
+    try {
+      const token = localStorage.getItem('fib_token') || ''
+      const res = await fetch('/api/carpeta?scope=general', {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      const data = await res.json().catch(() => ({ sections: [] }))
+      if (!res.ok) throw new Error(data?.error || 'No se pudo cargar la vista general')
+      const sections = Array.isArray(data?.sections) ? data.sections : []
+      setGeneralSections(sections)
+
+      const flat = sections.flatMap((section: any) =>
+        (Array.isArray(section?.hilos) ? section.hilos : []).map((hilo: any) => ({
+          ...hilo,
+          section: sectionLabel(section?.section),
+        }))
+      )
+      if (prefer?.hiloId && prefer?.ownerUsername) {
+        const same = flat.find((h: any) => h.id === prefer.hiloId && h.ownerUsername === prefer.ownerUsername)
+        setGeneralActive(same || flat[0] || null)
+      } else {
+        setGeneralActive((prev: any) => {
+          if (!prev) return flat[0] || null
+          return flat.find((h: any) => h.id === prev.id && h.ownerUsername === prev.ownerUsername) || flat[0] || null
+        })
+      }
+    } catch (err: any) {
+      setToast({ msg: err.message || 'Error cargando hilos por sección', ok: false })
+    } finally {
+      setGeneralLoading(false)
+    }
+  }
+
+  async function responderGeneral() {
+    if (!generalActive?.id || !generalActive?.ownerUsername || !generalReply.trim() || saving) return
+    setSaving(true)
+    try {
+      await enviarMensajeHiloCarpeta(generalActive.id, generalReply.trim(), generalActive.ownerUsername)
+      setGeneralReply('')
+      await cargarGeneralPorSeccion({ hiloId: generalActive.id, ownerUsername: generalActive.ownerUsername })
+      setToast({ msg: 'Mensaje enviado en hilo general', ok: true })
+    } catch (err: any) {
+      setToast({ msg: err.message, ok: false })
+    } finally {
+      setSaving(false)
+    }
   }
 
   async function guardarHilo(e: React.FormEvent) {
@@ -466,6 +525,15 @@ export default function CarpetaPage() {
     Vetado:    'tag border-gray-800 text-gray-600',
   }
 
+  useEffect(() => {
+    if (isSuperv) {
+      void cargarGeneralPorSeccion()
+    } else {
+      setGeneralSections([])
+      setGeneralActive(null)
+    }
+  }, [isSuperv])
+
   if (loading) return (
     <div className="flex items-center justify-center h-48">
       <p className="font-mono text-xs text-tx-muted tracking-widest">Cargando carpeta...</p>
@@ -494,6 +562,98 @@ export default function CarpetaPage() {
             onSelect={a => setCarpetaExterna(a)}
           />
           <p className="font-mono text-[8px] text-tx-dim mt-1.5">Solo se muestran anotaciones públicas de otros agentes</p>
+        </div>
+      )}
+
+      {isSuperv && (
+        <div className="card p-4 mb-5">
+          <div className="flex items-center justify-between mb-3 gap-3">
+            <div>
+              <p className="font-mono text-[9px] uppercase tracking-widest text-accent-blue">Carpetas generales por sección</p>
+              <p className="font-mono text-[8px] text-tx-dim mt-1">Mini chat consolidado de hilos para supervisión transversal</p>
+            </div>
+            <button onClick={() => cargarGeneralPorSeccion()} className="btn-ghost py-1.5 px-3 text-[9px]" disabled={generalLoading}>
+              {generalLoading ? 'Cargando...' : 'Recargar'}
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)] gap-3">
+            <div className="border border-bg-border bg-bg-surface max-h-96 overflow-y-auto">
+              {generalLoading && generalSections.length === 0 ? (
+                <p className="px-3 py-6 font-mono text-[10px] text-tx-muted text-center">Cargando secciones...</p>
+              ) : generalSections.length === 0 ? (
+                <p className="px-3 py-6 font-mono text-[10px] text-tx-muted text-center">Sin hilos generales detectados</p>
+              ) : (
+                generalSections.map((section: any) => (
+                  <div key={section.section} className="border-b border-bg-border last:border-0">
+                    <p className="px-3 py-2 font-mono text-[8px] uppercase tracking-widest text-tx-muted bg-bg-card">
+                      {sectionLabel(section.section)} · {Array.isArray(section.hilos) ? section.hilos.length : 0}
+                    </p>
+                    {(Array.isArray(section.hilos) ? section.hilos : []).map((hilo: any) => {
+                      const selected = generalActive?.id === hilo.id && generalActive?.ownerUsername === hilo.ownerUsername
+                      return (
+                        <button
+                          key={`${hilo.ownerUsername}-${hilo.id}`}
+                          onClick={() => setGeneralActive({ ...hilo, section: sectionLabel(section.section) })}
+                          className={`w-full text-left px-3 py-2 border-t border-bg-border/70 transition-colors ${selected ? 'bg-accent-blue/10 text-accent-blue' : 'hover:bg-bg-hover text-tx-secondary'}`}
+                        >
+                          <p className="text-xs font-medium truncate">{hilo.titulo}</p>
+                          <p className="font-mono text-[8px] text-tx-muted truncate">
+                            {hilo.ownerNombre || hilo.ownerUsername} · {hilo.estado}
+                          </p>
+                        </button>
+                      )
+                    })}
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="border border-bg-border bg-bg-surface min-h-80 flex flex-col">
+              {!generalActive ? (
+                <div className="flex-1 flex items-center justify-center px-4 text-center">
+                  <p className="font-mono text-xs text-tx-muted uppercase tracking-widest">Selecciona un hilo de sección</p>
+                </div>
+              ) : (
+                <>
+                  <div className="px-4 py-3 border-b border-bg-border bg-bg-card">
+                    <p className="font-display text-sm font-semibold tracking-wider uppercase text-tx-primary">{generalActive.titulo}</p>
+                    <p className="font-mono text-[8px] text-tx-muted mt-1">
+                      Sección: {sectionLabel(generalActive.section)} · Carpeta: {generalActive.ownerNombre || generalActive.ownerUsername}
+                    </p>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-2">
+                    {(generalActive.mensajes || []).map((mensaje: any) => (
+                      <div key={mensaje.id} className={`border px-3 py-2 ${mensaje.sistema ? 'border-bg-border bg-bg-card' : 'border-accent-blue/20 bg-bg-card/70'}`}>
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="font-mono text-[9px] uppercase tracking-widest text-accent-blue">{mensaje.nombre}</p>
+                          <p className="font-mono text-[8px] text-tx-muted">{new Date(mensaje.fecha).toLocaleString('es')}</p>
+                        </div>
+                        <p className="text-xs text-tx-secondary mt-1 whitespace-pre-wrap">{mensaje.contenido}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="px-3 py-3 border-t border-bg-border bg-bg-card flex gap-2">
+                    <input
+                      className="input text-sm flex-1"
+                      value={generalReply}
+                      onChange={(e) => setGeneralReply(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && responderGeneral()}
+                      placeholder={generalActive.estado === 'cerrado' ? 'Hilo cerrado' : 'Responder en el mini chat por sección'}
+                      disabled={saving || generalActive.estado === 'cerrado'}
+                    />
+                    <button
+                      onClick={responderGeneral}
+                      disabled={saving || !generalReply.trim() || generalActive.estado === 'cerrado'}
+                      className="btn-primary py-2 px-3 text-[9px]"
+                    >
+                      Enviar
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
         </div>
       )}
 

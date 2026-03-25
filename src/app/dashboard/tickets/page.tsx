@@ -2,6 +2,8 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { Plus, X, CheckCircle, AlertCircle, Send, ChevronRight, Tag, Clock, User } from 'lucide-react'
 import { getTickets, getTicket, crearTicket, editarTicket, borrarTicket } from '@/lib/client'
+import { Toast, ToastType } from '@/components/Toast'
+import { TableSkeleton } from '@/components/Skeleton'
 
 const ESTADO_COLOR: Record<string,string> = {
   abierto:    'border-green-700 bg-green-900/20 text-green-400',
@@ -16,17 +18,8 @@ const PRIORIDAD_DOT: Record<string,string> = {
   urgente: 'bg-red-500',
 }
 
-function Toast({ msg, ok, onClose }: { msg:string; ok:boolean; onClose:()=>void }) {
-  useEffect(() => { const t = setTimeout(onClose, 3000); return () => clearTimeout(t) }, [])
-  return (
-    <div className={`fixed bottom-5 right-5 z-[100] flex items-center gap-2 px-4 py-3 border font-mono text-xs ${ok?'bg-green-900/40 border-green-700 text-green-300':'bg-red-900/40 border-red-700 text-red-300'}`}>
-      {ok?<CheckCircle size={13}/>:<AlertCircle size={13}/>}{msg}
-    </div>
-  )
-}
-
 // ── Ticket View (Discord-style chat) ─────────────────────────────────────────
-function TicketChat({ ticketId, user, onClose, onUpdate }: { ticketId:string; user:any; onClose:()=>void; onUpdate:(m:string)=>void }) {
+function TicketChat({ ticketId, user, onClose, onUpdate, onError }: { ticketId:string; user:any; onClose:()=>void; onUpdate:(m:string)=>void; onError:(m:string)=>void }) {
   const [ticket,   setTicket]   = useState<any>(null)
   const [loading,  setLoading]  = useState(true)
   const [mensaje,  setMensaje]  = useState('')
@@ -58,7 +51,7 @@ function TicketChat({ ticketId, user, onClose, onUpdate }: { ticketId:string; us
 
   async function cambiarEstado(estado: string) {
     try { await editarTicket(ticketId, { estado }); await load(); onUpdate(`Estado: ${estado}`) }
-    catch(e:any) { alert(e.message) }
+    catch(e:any) { onError(e.message || 'Error al cambiar estado') }
   }
 
   if (loading) return (
@@ -202,7 +195,7 @@ export default function TicketsPage() {
   const [tickets, setTickets] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedId, setSelectedId] = useState<string|null>(null)
-  const [toast,   setToast]   = useState<{msg:string;ok:boolean}|null>(null)
+  const [toast,   setToast]   = useState<{msg:string;type:ToastType}|null>(null)
   const [filtroEstado, setFiltroEstado] = useState('')
   const [filtroTipo,   setFiltroTipo]   = useState('')
   const [showForm, setShowForm] = useState(false)
@@ -226,20 +219,22 @@ export default function TicketsPage() {
   useEffect(() => { load() }, [load])
 
   async function crear(e: React.FormEvent) {
-    e.preventDefault(); setCreating(true)
-    try { await crearTicket(form); setShowForm(false); load(); setToast({msg:'Ticket creado',ok:true}) }
-    catch(err:any) { setToast({msg:err.message,ok:false}) }
+    e.preventDefault()
+    if (!form.titulo.trim()) return
+    setCreating(true)
+    try { await crearTicket(form); setShowForm(false); load(); setToast({msg:'Ticket creado',type:'success'}) }
+    catch(err:any) { setToast({msg:err.message,type:'error'}) }
     finally { setCreating(false) }
   }
 
-  const notify = (msg:string, ok=true) => { setToast({msg,ok}); load() }
+  const notify = (msg:string, type:ToastType='success') => { setToast({msg,type}); load() }
   const abiertos = tickets.filter(t=>t.estado==='abierto').length
   const isSuperv = ['command_staff','supervisory'].includes(user?.rol)
 
   return (
     <div className="max-w-5xl mx-auto">
-      {toast && <Toast msg={toast.msg} ok={toast.ok} onClose={()=>setToast(null)}/>}
-      {selectedId && <TicketChat ticketId={selectedId} user={user} onClose={()=>setSelectedId(null)} onUpdate={m=>notify(m)}/>}
+      {toast && <Toast msg={toast.msg} type={toast.type} onClose={()=>setToast(null)}/>}
+      {selectedId && <TicketChat ticketId={selectedId} user={user} onClose={()=>setSelectedId(null)} onUpdate={m=>notify(m)} onError={m=>notify(m,'error')}/>}
 
       <div className="flex items-center justify-between mb-5">
         <div className="page-header mb-0">
@@ -260,7 +255,7 @@ export default function TicketsPage() {
         <div className="card p-4 mb-4">
           <span className="section-tag block mb-3">// Crear Nuevo Ticket</span>
           <form onSubmit={crear} className="flex flex-col gap-3">
-            <input className="input" placeholder="Título del ticket *" value={form.titulo} onChange={e=>setForm(p=>({...p,titulo:e.target.value}))} required />
+            <input className="input" placeholder="Título del ticket * (requerido)" value={form.titulo} onChange={e=>setForm(p=>({...p,titulo:e.target.value}))} required />
             <textarea className="input text-sm min-h-20 resize-none" placeholder="Descripción detallada del problema o solicitud..." value={form.descripcion} onChange={e=>setForm(p=>({...p,descripcion:e.target.value}))} />
             <div className="flex gap-2">
               <select className="input text-xs py-2 flex-1" value={form.tipo} onChange={e=>setForm(p=>({...p,tipo:e.target.value}))}>
@@ -276,7 +271,7 @@ export default function TicketsPage() {
                 <option value="urgente">Urgente</option>
               </select>
               <button type="button" onClick={()=>setShowForm(false)} className="btn-ghost py-2 px-3 text-[9px]">Cancelar</button>
-              <button type="submit" disabled={creating} className="btn-primary py-2 text-[9px]">{creating?'Creando...':'Crear Ticket'}</button>
+              <button type="submit" disabled={creating || !form.titulo.trim()} className="btn-primary py-2 text-[9px] disabled:opacity-50 disabled:cursor-not-allowed">{creating?'Creando...':'Crear Ticket'}</button>
             </div>
           </form>
         </div>
@@ -295,7 +290,7 @@ export default function TicketsPage() {
       </div>
 
       {/* Ticket list */}
-      {loading ? <div className="text-center py-12 font-mono text-xs text-tx-muted">Cargando...</div>
+      {loading ? <TableSkeleton rows={5} cols={5}/>
       : tickets.length === 0 ? (
         <div className="card p-14 flex flex-col items-center gap-3 text-tx-muted">
           <p className="font-mono text-xs tracking-widest uppercase">Sin tickets</p>

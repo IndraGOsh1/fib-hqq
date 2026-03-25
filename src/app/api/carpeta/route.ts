@@ -9,9 +9,56 @@ export async function GET(req: NextRequest) {
   if (!u) return unauthorized()
 
   const { searchParams } = new URL(req.url)
+  const scope = String(searchParams.get('scope') || '').trim().toLowerCase()
   let targetUsername = searchParams.get('username')
   const targetAgentNumber = searchParams.get('agentNumber')
   const targetDiscordId = searchParams.get('discordId')
+  const isElevated = ['command_staff', 'supervisory'].includes(u.rol)
+
+  if (scope === 'general') {
+    if (!isElevated) return forbidden()
+    const db = await getDB()
+    const candidates = Array.from(db.users.values())
+      .filter((candidate) => candidate.username && candidate.activo !== false)
+
+    const rows = await Promise.all(candidates.map(async (candidate) => {
+      const carpeta = await getCarpeta(candidate.username)
+      return { candidate, carpeta }
+    }))
+
+    const grouped = new Map<string, any[]>()
+
+    for (const row of rows) {
+      const section = (Array.isArray(row.candidate.clases) && row.candidate.clases[0]
+        ? String(row.candidate.clases[0]).trim()
+        : 'General') || 'General'
+      const hilos = (row.carpeta.hilos || []).map((hilo: any) => ({
+        ...hilo,
+        mensajes: Array.isArray(hilo.mensajes) ? hilo.mensajes.slice(-60) : [],
+      }))
+      if (!hilos.length) continue
+
+      if (!grouped.has(section)) grouped.set(section, [])
+      grouped.get(section)!.push(...hilos.map((hilo: any) => ({
+        ...hilo,
+        ownerUsername: row.candidate.username,
+        ownerNombre: row.candidate.nombre || row.candidate.username,
+        ownerCallsign: row.candidate.callsign || null,
+      })))
+    }
+
+    const sections = Array.from(grouped.entries())
+      .sort((a, b) => a[0].localeCompare(b[0], 'es', { sensitivity: 'base' }))
+      .map(([section, hilos]) => ({
+        section,
+        hilos: hilos.sort((a: any, b: any) => String(b.creadoEn || '').localeCompare(String(a.creadoEn || ''))),
+      }))
+
+    return NextResponse.json({
+      sections,
+      totalThreads: sections.reduce((acc, section) => acc + section.hilos.length, 0),
+    })
+  }
 
   if (!targetUsername && (targetAgentNumber || targetDiscordId)) {
     const db = await getDB()
@@ -25,12 +72,14 @@ export async function GET(req: NextRequest) {
 
   // If requesting another user's carpeta, require supervisory or command_staff
   if (targetUsername && targetUsername !== u.username) {
-    if (!['command_staff', 'supervisory'].includes(u.rol)) return forbidden()
+    if (!isElevated) return forbidden()
     const carpeta = await getCarpeta(targetUsername)
     return NextResponse.json({
       ...carpeta,
       anotaciones: carpeta.anotaciones.filter((a: any) => !a.privada),
-      hilos: (carpeta.hilos || []).filter((hilo: any) => canAccessCarpetaHilo(hilo, u.username, targetUsername!)),
+      hilos: isElevated
+        ? (carpeta.hilos || [])
+        : (carpeta.hilos || []).filter((hilo: any) => canAccessCarpetaHilo(hilo, u.username, targetUsername!)),
     })
   }
 
@@ -45,7 +94,9 @@ export async function POST(req: NextRequest) {
   const now  = new Date().toISOString()
   const { searchParams } = new URL(req.url)
   const targetUsername = String(searchParams.get('username') || u.username)
-  if (targetUsername !== u.username && !['command_staff', 'supervisory'].includes(u.rol)) return forbidden()
+  const isElevated = ['command_staff', 'supervisory'].includes(u.rol)
+  const canModerateExternal = targetUsername !== u.username && isElevated
+  if (targetUsername !== u.username && !isElevated) return forbidden()
   const carpeta = await getCarpeta(targetUsername)
 
   if (body.tipo === 'anotacion') {
@@ -121,7 +172,7 @@ export async function POST(req: NextRequest) {
     if (!hiloId || !contenido) return NextResponse.json({ error:'hilo y contenido requeridos' }, { status:400 })
     const hilo = (carpeta.hilos || []).find((entry) => entry.id === hiloId)
     if (!hilo) return NextResponse.json({ error:'hilo no encontrado' }, { status:404 })
-    if (!canAccessCarpetaHilo(hilo, u.username, targetUsername)) return forbidden()
+    if (!canModerateExternal && !canAccessCarpetaHilo(hilo, u.username, targetUsername)) return forbidden()
 
     const next = {
       ...carpeta,
@@ -148,7 +199,7 @@ export async function POST(req: NextRequest) {
     const estado: 'abierto' | 'cerrado' = body.estado === 'cerrado' ? 'cerrado' : 'abierto'
     const hilo = (carpeta.hilos || []).find((entry) => entry.id === hiloId)
     if (!hilo) return NextResponse.json({ error:'hilo no encontrado' }, { status:404 })
-    if (!canAccessCarpetaHilo(hilo, u.username, targetUsername)) return forbidden()
+    if (!canModerateExternal && !canAccessCarpetaHilo(hilo, u.username, targetUsername)) return forbidden()
 
     const next = {
       ...carpeta,
