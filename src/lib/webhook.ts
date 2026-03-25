@@ -161,9 +161,12 @@ export const logAllanamiento = (action: string, numero: string, by: string, deta
   })
 
 function buildAllanamientoStatusImage(numero: string, direccion: string, estado: string) {
-  const title = encodeURIComponent(`ALLANAMIENTO ${estado.toUpperCase()}`)
-  const subtitle = encodeURIComponent(`${numero} | ${direccion}`)
-  return `https://dummyimage.com/1200x628/0a1320/e6ecf2.png&text=${title}%0A${subtitle}`
+  const safeNumero = String(numero || 'SIN NUMERO').trim().slice(0, 72)
+  const safeDireccion = String(direccion || 'SIN DIRECCION').replace(/\s+/g, ' ').trim().slice(0, 120)
+  const safeEstado = String(estado || 'pendiente').replace(/\s+/g, ' ').trim().toUpperCase().slice(0, 48)
+  const title = encodeURIComponent(`ALLANAMIENTO ${safeEstado}`)
+  const subtitle = encodeURIComponent(`${safeNumero} | ${safeDireccion}`)
+  return `https://dummyimage.com/1920x1080/0a1320/e6ecf2.png&text=${title}%0A${subtitle}`
 }
 
 function isDiscordRenderableImage(url?: string) {
@@ -171,6 +174,7 @@ function isDiscordRenderableImage(url?: string) {
   const normalized = String(url).trim()
   if (!/^https?:\/\//i.test(normalized)) return false
   if (/localhost|127\.0\.0\.1|\.local/i.test(normalized)) return false
+  if (/\/api\/allanamientos\/[^/]+\/preview-image\.png(\?|$)/i.test(normalized)) return true
   return /\.(png|jpg|jpeg|webp|gif)(\?|$)/i.test(normalized)
 }
 

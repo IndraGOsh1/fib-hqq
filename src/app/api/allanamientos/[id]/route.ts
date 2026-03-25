@@ -21,7 +21,7 @@ function getPublicBaseUrl(req: NextRequest) {
 
 function buildPreviewUrl(req: NextRequest, allanamientoId: string) {
   const base = getPublicBaseUrl(req)
-  return `${base}/api/allanamientos/${allanamientoId}/preview?t=${Date.now()}`
+  return `${base}/api/allanamientos/${allanamientoId}/preview-image.png?t=${Date.now()}`
 }
 
 export async function GET(req: NextRequest, { params }:P) {

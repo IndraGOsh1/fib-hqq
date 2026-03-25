@@ -3,7 +3,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
-import { LayoutDashboard, Users, FolderOpen, Car, FileSearch, Ticket, MessageSquare, FolderArchive, Shield, Settings, LogOut, Menu, X, Bell, ChevronRight } from 'lucide-react'
+import { LayoutDashboard, Users, FolderOpen, FileSearch, Ticket, MessageSquare, FolderArchive, Shield, Settings, LogOut, Menu, X, Bell, MapPin, Activity } from 'lucide-react'
 import { useTheme } from '@/lib/theme-context'
 import { readJsonSafely } from '@/lib/client'
 
@@ -62,6 +62,24 @@ const ROL_COLOR: Record<string,string> = {
   visitante:     'text-gray-400',
 }
 
+const DEFAULT_DASHBOARD_BG = 'https://i.imgur.com/7NxeszI.png'
+
+function formatClock(date: Date) {
+  return date.toLocaleTimeString('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  })
+}
+
+function getUserInitials(user: any) {
+  const source = String(user?.nombre || user?.username || 'FB').trim()
+  const parts = source.split(/\s+/).filter(Boolean)
+  if (parts.length >= 2) return `${parts[0][0] || ''}${parts[1][0] || ''}`.toUpperCase()
+  return source.slice(0, 2).toUpperCase()
+}
+
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [checking, setChecking] = useState(true)
   const [open, setOpen] = useState(false)
@@ -69,6 +87,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [notifCount, setNotifCount] = useState(0)
   const [showNotifDot, setShowNotifDot] = useState(false)
   const [notifTargets, setNotifTargets] = useState({ tickets: 0, allanamientos: 0 })
+  const [clock, setClock] = useState(() => formatClock(new Date()))
+  const [latency, setLatency] = useState(24)
+  const [contentReady, setContentReady] = useState(false)
   const pathname = usePathname()
   const router = useRouter()
   const { theme } = useTheme()
@@ -177,6 +198,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
   }, [pathname])
 
+  useEffect(() => {
+    const clockInterval = setInterval(() => setClock(formatClock(new Date())), 1000)
+    const latencyInterval = setInterval(() => setLatency(18 + Math.floor(Math.random() * 11)), 3000)
+    const enterFrame = requestAnimationFrame(() => setContentReady(true))
+    return () => {
+      clearInterval(clockInterval)
+      clearInterval(latencyInterval)
+      cancelAnimationFrame(enterFrame)
+    }
+  }, [])
+
   const logout = async () => {
     localStorage.removeItem('fib_token')
     localStorage.removeItem('fib_user')
@@ -272,40 +304,93 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       {/* Main */}
       <div className="flex-1 flex flex-col md:ml-56">
         {/* Topbar */}
-        <header className="h-12 bg-bg-card border-b border-bg-border flex items-center justify-between px-4 shrink-0">
-          <div className="flex items-center gap-3">
-            <button onClick={()=>setOpen(true)} className="md:hidden text-tx-muted hover:text-tx-primary"><Menu size={16}/></button>
-            <div className="hidden md:flex items-center gap-1 font-mono text-[9px] text-tx-muted">
-              <span style={{color:theme.accentColor}}>FIB HQ</span>
-              <ChevronRight size={8}/>
-              <span className="text-tx-secondary capitalize">{pathname.split('/').filter(Boolean).slice(1).join(' / ')||'inicio'}</span>
+        <header className="sticky top-0 z-30 shrink-0 border-b border-white/10 bg-black/40 backdrop-blur-md">
+          <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 md:px-6">
+            <div className="flex items-center gap-3 min-w-0 order-1">
+              <button onClick={()=>setOpen(true)} className="md:hidden text-white/70 hover:text-white transition-colors"><Menu size={17}/></button>
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="relative h-11 w-11 overflow-hidden rounded-2xl border border-white/10 bg-white/5 shadow-[0_0_30px_rgba(255,255,255,0.04)]">
+                  <Image src={theme.logoUrl||'https://i.imgur.com/EAimMhx.png'} alt="FIB Logo" fill sizes="44px" className="object-contain p-2 opacity-90" />
+                </div>
+                <div className="min-w-0">
+                  <p className="font-display text-[11px] font-semibold uppercase tracking-[0.32em] text-white/95 sm:text-xs">
+                    Federal Investigation Bureau
+                  </p>
+                  <p className="font-mono text-[9px] uppercase tracking-[0.28em] text-white/45">
+                    Tactical Operating System
+                  </p>
+                </div>
+              </div>
             </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="hidden sm:flex items-center gap-1.5">
-              <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{backgroundColor:theme.accentColor}}/>
-              <span className="font-mono text-[8px] tracking-widest" style={{color:theme.accentColor}}>ONLINE</span>
+
+            <div className="order-3 flex w-full items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-2.5 md:order-2 md:w-auto md:min-w-[290px] md:justify-center md:gap-5">
+              <div className="flex flex-col">
+                <span className="font-mono text-[8px] uppercase tracking-[0.26em] text-white/45">System Time</span>
+                <span className="font-mono text-base tracking-[0.26em] text-white sm:text-lg">{clock}</span>
+              </div>
+              <div className="h-8 w-px bg-white/10" />
+              <div className="flex items-center gap-2">
+                <MapPin size={13} className="text-cyan-300/80" />
+                <div className="flex flex-col">
+                  <span className="font-mono text-[8px] uppercase tracking-[0.26em] text-white/45">Node</span>
+                  <span className="font-mono text-[10px] uppercase tracking-[0.24em] text-white/80 sm:text-[11px]">Los Santos, HQ</span>
+                </div>
+              </div>
             </div>
-            <button onClick={openNotifications} className="relative text-tx-muted hover:text-tx-primary transition-colors" title={notifCount > 0 ? `${notifCount} pendiente(s)` : 'Sin pendientes'}>
-              <Bell size={14}/>
-              {showNotifDot && (
-                <span className="absolute -top-1 -right-1 w-3.5 h-3.5 flex items-center justify-center text-[7px] font-bold rounded-full" style={{ backgroundColor: theme.accentColor, color: '#000' }}>
-                  {notifCount > 9 ? '9+' : notifCount}
+
+            <div className="order-2 flex items-center gap-2 sm:gap-3 md:order-3">
+              <div className="hidden rounded-2xl border border-emerald-400/20 bg-emerald-500/10 px-3 py-2 text-emerald-300 shadow-[0_0_30px_rgba(16,185,129,0.08)] sm:flex sm:flex-col">
+                <span className="font-mono text-[8px] uppercase tracking-[0.24em] text-emerald-200/70">System Online</span>
+                <span className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.22em]">
+                  <span className="relative flex h-2.5 w-2.5">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400/60" />
+                    <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-400" />
+                  </span>
+                  {latency}ms
                 </span>
+              </div>
+
+              <button onClick={openNotifications} className="relative rounded-2xl border border-white/10 bg-white/5 p-2.5 text-white/70 transition-colors hover:text-white" title={notifCount > 0 ? `${notifCount} pendiente(s)` : 'Sin pendientes'}>
+                <Bell size={15}/>
+                {showNotifDot && (
+                  <span className="absolute -top-1 -right-1 min-w-[0.9rem] rounded-full bg-emerald-400 px-1 py-[1px] text-center text-[8px] font-bold leading-none text-black">
+                    {notifCount > 9 ? '9+' : notifCount}
+                  </span>
+                )}
+              </button>
+
+              {user && (
+                <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-2.5 py-2 shadow-[0_0_30px_rgba(255,255,255,0.04)]">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-white/10 font-mono text-xs font-semibold uppercase tracking-[0.18em] text-white">
+                    {getUserInitials(user)}
+                  </div>
+                  <div className="hidden min-w-0 sm:block">
+                    <p className="truncate font-display text-[11px] font-semibold uppercase tracking-[0.22em] text-white/90">
+                      {user.nombre || user.username}
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <Activity size={11} className="text-emerald-400" />
+                      <p className={`truncate font-mono text-[8px] uppercase tracking-[0.24em] ${ROL_COLOR[user.rol]||'text-white/60'}`}>
+                        {String(user.rol || '').replace('_', ' ')}
+                      </p>
+                    </div>
+                  </div>
+                </div>
               )}
-            </button>
+            </div>
           </div>
         </header>
 
         {/* Dashboard background */}
         <div className="flex-1 relative overflow-auto">
-          {theme.dashboardBgUrl && (
+          {(theme.dashboardBgUrl || DEFAULT_DASHBOARD_BG) && (
             <div className="absolute inset-0 pointer-events-none z-0">
-              <img src={theme.dashboardBgUrl} alt="" className="w-full h-full object-cover opacity-5"/>
+              <img src={theme.dashboardBgUrl || DEFAULT_DASHBOARD_BG} alt="" className="w-full h-full object-cover opacity-[0.14]"/>
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(17,24,39,0.18),transparent_30%),linear-gradient(180deg,rgba(4,7,12,0.38),rgba(4,7,12,0.92))]" />
             </div>
           )}
 
-          <div className="relative z-10 p-5 flex flex-col gap-4 min-h-full">
+          <div className={`relative z-10 p-5 flex min-h-full flex-col gap-4 dashboard-enter ${contentReady ? 'dashboard-enter-ready' : ''}`}>
             {/* Welcome banner */}
             {theme.welcomeEnabled && theme.welcomeBanner && (
               <div className="px-4 py-3 border-l-2 text-sm" style={{borderColor:theme.accentColor, backgroundColor:`${theme.accentColor}10`}}>
